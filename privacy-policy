@@ -1,0 +1,17 @@
+# Privacy Policy for social media post agent
+
+Last updated: September 2026
+
+At social media post agent, we respect your privacy. This Privacy Policy explains how we handle data when you use our automation tools to connect with the Meta Ads API, Facebook Pages, or Instagram Graph API.
+
+### 1. Data We Collect
+We do not store or harvest your personal information or marketing data on any external servers. Our application programmatically interfaces with the Meta Graph API solely to manage, create, and post advertisements as instructed by the authenticated user.
+
+### 2. How Data is Used
+Any access tokens, page permissions, or ad account data retrieved via Meta Authentication are processed temporarily in memory or stored strictly within your own secure, local environment to execute your requested API calls. We do not sell or share this data with third parties.
+
+### 3. Third-Party Services
+Our tool interacts directly with Meta Platforms, Inc. (Facebook/Instagram). Your data handling through those networks is governed by Meta’s own Privacy Policy.
+
+### 4. Contact Us
+If you have any questions about this Privacy Policy, you can contact us via our developer portal profile.
