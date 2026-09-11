@@ -1,16 +1,14 @@
 import requests
-import dotenv
 import json
-import os
 from langchain_community.tools import tool
+from backend.services.token_store import get_user_access_token
 
 @tool
 def get_facebook_page_info():
     "Get the Facebook page information using the Graph API."
 
     try:
-        dotenv.load_dotenv()
-        user_access_token = os.getenv("USER_ACCESS_TOKEN")
+        user_access_token = get_user_access_token()
         if not user_access_token:
             raise ValueError("USER_ACCESS_TOKEN is not configured")
 

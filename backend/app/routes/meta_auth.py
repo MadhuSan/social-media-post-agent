@@ -3,6 +3,7 @@ import secrets
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from services.token_store import save_user_access_token
 
 from app.config import settings
 
@@ -132,7 +133,20 @@ async def meta_callback(
 
     # PHASE 1 ONLY
     # DO NOT return access tokens to frontend in production.
+
+    token_data = response.json()
+
+    user_access_token = token_data.get("access_token")
+
+    if not user_access_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Meta did not return an access token"
+        )
+
+    save_user_access_token(user_access_token)
+
     return {
-        "message": "Meta authentication successful",
-        "token_data": token_data
-    }
+    "message": "Meta authentication successful",
+    "token_received": True,
+}
