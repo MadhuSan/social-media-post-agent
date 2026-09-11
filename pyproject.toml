@@ -1,0 +1,20 @@
+[project]
+name = "social-post-assistant"
+version = "0.0.0"
+description = "A Managed Deep Agent project."
+requires-python = ">=3.14"
+dependencies = [
+    "ddgs>=9.15.0",
+    "deepagents>=0.7.13",
+    "fastapi",
+    "httpx",
+    "langchain_core>=1.3.14",
+    "langchain_community>=0.4.2",
+    "langchain-huggingface>=1.2.2",
+    "langchain-ollama>=1.1.0",
+    "langchain-openai>=1.6.0",
+    "langgraph>=1.2.11",
+    "managed-deepagents==0.5.3",
+    "pydantic-settings",
+    "uvicorn[standard]",
+]
