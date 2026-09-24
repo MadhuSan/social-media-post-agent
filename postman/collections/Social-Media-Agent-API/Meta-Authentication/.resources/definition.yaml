@@ -1,0 +1,3 @@
+$kind: collection
+name: Meta Authentication
+description: Meta OAuth authentication endpoints for linking Facebook/Instagram accounts

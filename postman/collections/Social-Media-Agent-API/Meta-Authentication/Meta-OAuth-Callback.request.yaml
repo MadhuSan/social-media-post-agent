@@ -1,0 +1,11 @@
+$kind: http-request
+name: Meta OAuth Callback
+method: GET
+url: '{{baseUrl}}/auth/meta/callback?code={{oauthCode}}&state={{oauthState}}'
+order: 2000
+description: Meta redirects the user here after login. Handles OAuth code exchange and stores the access token.
+queryParams:
+  - key: code
+    value: '{{oauthCode}}'
+  - key: state
+    value: '{{oauthState}}'

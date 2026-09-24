@@ -1,0 +1,17 @@
+$kind: http-request
+name: Create Social Account
+method: POST
+url: '{{baseUrl}}/users/{{userId}}/social-accounts'
+order: 1000
+pathVariables:
+  - key: user_id
+    value: '{{userId}}'
+body:
+  type: json
+  content: |-
+    {
+      "provider": "facebook",
+      "provider_user_id": "{{providerUserId}}",
+      "access_token": "{{accessToken}}",
+      "token_expires_at": null
+    }

@@ -10,11 +10,10 @@ class Settings(BaseSettings):
     META_APP_ID: str
     META_APP_SECRET: str
     META_REDIRECT_URI: str
-
-
     META_API_VERSION: str = "v26.0"
-
     FRONTEND_URL: str = "http://localhost:8501"
+    DATABASE_URL: str
+    TOKEN_ENCRYPTION_KEY: str
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

@@ -1,11 +1,16 @@
 import secrets
+from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from services.token_store import save_user_access_token
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from ..config import settings
+from ..db.database import get_db
+from ..db.models import SocialAccount, User
+from ..services.token_encryption import encrypt_token
 
 
 router = APIRouter(
@@ -16,11 +21,11 @@ router = APIRouter(
 
 # TEMPORARY ONLY
 # Later this will move to Redis/database/session storage.
-oauth_states = set()
+oauth_states: dict[str, UUID] = {}
 
 
 @router.get("/login")
-async def meta_login():
+async def meta_login(user_id: UUID = Query(...)):
     """
     Starts Meta OAuth flow.
     """
@@ -29,7 +34,7 @@ async def meta_login():
     state = secrets.token_urlsafe(32)
 
     # Temporary storage for Phase 1
-    oauth_states.add(state)
+    oauth_states[state] = user_id
 
     # Permissions we need for the Facebook Page flow.
     scopes = [
@@ -70,6 +75,7 @@ async def meta_callback(
     error: str | None = Query(default=None),
     error_reason: str | None = Query(default=None),
     error_description: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Meta redirects the user here after login.
@@ -94,14 +100,15 @@ async def meta_callback(
         )
 
     # Validate state
-    if state not in oauth_states:
+    user_id = oauth_states.get(state)
+    if user_id is None:
         raise HTTPException(
             status_code=400,
             detail="Invalid OAuth state"
         )
 
     # Remove state so it cannot be reused
-    oauth_states.remove(state)
+    oauth_states.pop(state, None)
 
     token_url = (
         f"https://graph.facebook.com/"
@@ -116,37 +123,61 @@ async def meta_callback(
     }
 
     async with httpx.AsyncClient() as client:
-
         response = await client.get(
             token_url,
             params=params,
             timeout=30.0
         )
 
-    if response.status_code != 200:
-        raise HTTPException(
-            status_code=400,
-            detail=response.json()
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=response.json())
+
+        token_data = response.json()
+        user_access_token = token_data.get("access_token")
+        if not user_access_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Meta did not return an access token",
+            )
+
+        user_response = await client.get(
+            f"https://graph.facebook.com/{settings.META_API_VERSION}/me",
+            params={"fields": "id", "access_token": user_access_token},
+            timeout=30.0,
         )
 
-    token_data = response.json()
-
-    # PHASE 1 ONLY
-    # DO NOT return access tokens to frontend in production.
-
-    token_data = response.json()
-
-    user_access_token = token_data.get("access_token")
-
-    if not user_access_token:
+    if user_response.status_code != 200:
         raise HTTPException(
-            status_code=400,
-            detail="Meta did not return an access token"
+            status_code=502,
+            detail="Meta did not return the authenticated user details",
         )
 
-    save_user_access_token(user_access_token)
+    provider_user_id = user_response.json().get("id")
+    if not provider_user_id:
+        raise HTTPException(status_code=502, detail="Meta user ID is missing")
+
+    result = await db.execute(
+        select(SocialAccount).where(
+            SocialAccount.user_id == user_id,
+            SocialAccount.provider == "facebook",
+        )
+    )
+    social_account = result.scalar_one_or_none()
+    if social_account is None:
+        social_account = SocialAccount(
+            user_id=user_id,
+            provider="facebook",
+            provider_user_id=provider_user_id,
+            access_token_encrypted=encrypt_token(user_access_token),
+        )
+        db.add(social_account)
+    else:
+        social_account.provider_user_id = provider_user_id
+        social_account.access_token_encrypted = encrypt_token(user_access_token)
+
+    await db.commit()
 
     return {
-    "message": "Meta authentication successful",
-    "token_received": True,
-}
+        "message": "Meta authentication successful",
+        "social_account_id": str(social_account.id),
+    }

@@ -36,5 +36,5 @@ user_prompt = f"""Generate social media post using search tool.
 -You can search internet for relevant information to generate the effective advertisement content.
 -Remember:emojis instead of markdown, ready to copy-paste directly to Instagram/Facebook.
 -Fetch page details using the tool get_facebook_page_info.
--Extract page id and access token using the tool extract_page_info.
+-Use the page id and access token returned by get_facebook_page_info.
 -Post the content generated from search tool on facebook page by calling the tool post_content."""

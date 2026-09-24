@@ -1,69 +1,56 @@
-import requests
+import asyncio
 import json
+from uuid import UUID
+
 from langchain_community.tools import tool
-from backend.services.token_store import get_user_access_token
+from sqlalchemy import select
 
-@tool
-def get_facebook_page_info():
-    "Get the Facebook page information using the Graph API."
+from backend.app.db.database import AsyncSessionLocal
+from backend.app.db.models import FacebookPage
+from backend.app.services.token_encryption import decrypt_token
+from backend.app.config import settings
 
-    try:
-        user_access_token = get_user_access_token()
-        if not user_access_token:
-            raise ValueError("USER_ACCESS_TOKEN is not configured")
-
-        with open("config.json", encoding="utf-8") as config_file:
-            config = json.load(config_file)
-
-        url = config.get("facebook_url")
-        if not url:
-            raise ValueError("facebook_url is not configured")
-
-        response = requests.get(
-            url,
-            params={"access_token": user_access_token},
-            timeout=30,
+async def _get_facebook_pages_info(social_account_id: UUID) -> list[dict[str, str]]:
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(FacebookPage)
+            .where(FacebookPage.social_account_id == social_account_id)
+            .order_by(FacebookPage.created_at)
         )
-        try:
-            response_data = response.json()
-        except json.JSONDecodeError:
-            response_data = {"raw_response": response.text}
+        pages = result.scalars().all()
+        if not pages:
+            raise RuntimeError("No Facebook page is stored for this social account")
 
-        if not response.ok:
-            facebook_error = response_data.get("error", {})
-            error_message = facebook_error.get("message", response.text)
-            error_code = facebook_error.get("code", response.status_code)
-            raise RuntimeError(
-                f"Facebook API error {error_code}: {error_message}"
-            )
+        return [
+            {
+                "id": page.page_id,
+                "name": page.page_name or "",
+                "access_token": decrypt_token(page.page_access_token_encrypted),
+            }
+            for page in pages
+        ]
 
-        print(response_data)
-        return response_data
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as error:
-        print(f"Configuration error: {error}")
-    except requests.exceptions.RequestException as error:
-        print(f"Facebook API request failed: {error}")
-    except RuntimeError as error:
-        print(error)
-    except TypeError as error:
-        print(f"Invalid Facebook API response: {error}")
 
 @tool
-def extract_page_info(response_data):
-    "Extract relevant page information from the Facebook API response."
-    # Extract the target elements safely
-    if isinstance(response_data, dict) and isinstance(response_data.get("data"), list) and response_data["data"]:
-        page_data = response_data["data"][0]  # Get the first page in the list
-        
-        page_id = page_data.get("id")
-        access_token = page_data.get("access_token")
+def get_facebook_pages(social_account_id: str):
+    """Get all stored Facebook pages so the user can select one."""
+    return asyncio.run(_get_facebook_pages_info(UUID(social_account_id)))
 
-        print(f"Extracted Page ID: {page_id}")
-        print(f"Extracted Access Token: {access_token}")
 
-        return page_id, access_token
-    else:
-        print("No page data found in the response.")
+@tool
+def get_facebook_page_info(social_account_id: str, page_id: str):
+    """Get the selected Facebook page for a social account."""
+    pages = asyncio.run(_get_facebook_pages_info(UUID(social_account_id)))
+    for page in pages:
+        if page["id"] == page_id:
+            return page
+    raise ValueError(f"Facebook page '{page_id}' is not available for this social account")
+
+
+@tool
+def get_facebook_page_info(social_account_id: str):
+    "Get the first stored Facebook page for a social account from PostgreSQL."
+    return asyncio.run(_get_facebook_page_info(UUID(social_account_id)))
 
 @tool
 def post_content(page_id,access_token,content):
@@ -71,20 +58,32 @@ def post_content(page_id,access_token,content):
 
     if content is None:
         content = "Content is provided by LLM."
-    url = f"https://graph.facebook.com/v26.0/{page_id}/feed"
+    url = f"https://graph.facebook.com/{settings.META_API_VERSION}/{page_id}/feed"
 
     data={
     "message": content,
     "access_token": access_token
     }
 
-    requests.post(url, data=data)
+    import requests
+
+    response = requests.post(url, data=data, timeout=30)
+    if not response.ok:
+        try:
+            response_data = response.json()
+        except json.JSONDecodeError:
+            response_data = response.text
+        raise RuntimeError(f"Facebook post failed: {response_data}")
+
+    return response.json()
     
 
 
 if __name__ == "__main__":
-    response_data = get_facebook_page_info()
-    if response_data:
-        page_id, access_token = extract_page_info(response_data)
-        post_content(page_id, access_token, "Content is provided by LLM.")
+    page_data = get_facebook_page_info("SOCIAL_ACCOUNT_UUID")
+    post_content(
+        page_data["id"],
+        page_data["access_token"],
+        "Content is provided by LLM.",
+    )
 

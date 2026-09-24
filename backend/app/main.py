@@ -1,5 +1,8 @@
 from fastapi import FastAPI
-from app.routes.meta_auth import router as meta_auth_router
+from .routes.meta_auth import router as meta_auth_router
+from .routes.content_drafts import router as content_drafts_router
+from .routes.social_accounts import router as social_accounts_router
+from .routes.users import router as users_router
 
 
 app = FastAPI(
@@ -9,6 +12,9 @@ app = FastAPI(
 
 
 app.include_router(meta_auth_router)
+app.include_router(content_drafts_router)
+app.include_router(social_accounts_router)
+app.include_router(users_router)
 
 
 @app.get("/")

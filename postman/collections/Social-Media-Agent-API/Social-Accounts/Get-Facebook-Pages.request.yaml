@@ -1,0 +1,9 @@
+$kind: http-request
+name: Get Facebook Pages
+method: GET
+url: '{{baseUrl}}/social-accounts/{{socialAccountId}}/facebook-pages'
+order: 2000
+description: Fetches Facebook pages for a social account and upserts them in the database.
+pathVariables:
+  - key: social_account_id
+    value: '{{socialAccountId}}'

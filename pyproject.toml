@@ -17,4 +17,9 @@ dependencies = [
     "managed-deepagents==0.5.3",
     "pydantic-settings",
     "uvicorn[standard]",
+    "sqlalchemy>=2.0.52",
+    "asyncpg>=0.31.0",
+    "alembic>=1.19.2",
+    "cryptography>=50.0.1",
+    "psycopg[binary]>=3.3.5",
 ]

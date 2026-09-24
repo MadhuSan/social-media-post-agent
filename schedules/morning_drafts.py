@@ -13,6 +13,6 @@ schedule = define_schedule(
             "type": "provider_conversation",
             "conversation_id": "******",
         },
-        "auto_post": True,
+        "auto_post": False,
     },
 )

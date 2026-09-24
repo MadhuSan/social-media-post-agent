@@ -1,0 +1,11 @@
+$kind: collection
+name: Social Media Agent API
+description: API collection for the Social Media Agent backend. Covers general health endpoints, Meta OAuth authentication, user management, and social account management.
+variables:
+  baseUrl: http://localhost:8000
+  userId: ""
+  socialAccountId: ""
+  providerUserId: ""
+  accessToken: ""
+  oauthCode: ""
+  oauthState: ""

@@ -2,7 +2,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from tools.webSearch import search
-from tools.postToFacebookPage import get_facebook_page_info,extract_page_info,post_content
+from tools.postToFacebookPage import get_facebook_page_info, post_content
 from models import model
 import prompts.birdsPrompt
 import json
@@ -17,6 +17,7 @@ class FacebookPostState(TypedDict, total=False):
     system_prompt: str
     user_prompt: str
     search_query: str
+    social_account_id: str
     search_result: str
     generated_content: str
     page_response: dict[str, Any]
@@ -47,21 +48,26 @@ def generate_content_node(state: FacebookPostState) -> FacebookPostState:
 
 
 def get_page_info_node(state: FacebookPostState) -> FacebookPostState:
-    page_response = get_facebook_page_info.invoke({})
-    if not page_response:
-        raise RuntimeError("get_facebook_page_info returned no page data")
-    return {"page_response": page_response}
+    social_account_id = state.get("social_account_id")
+    if not social_account_id:
+        raise RuntimeError("social_account_id is required to load a Facebook page")
 
-
-def extract_page_info_node(state: FacebookPostState) -> FacebookPostState:
-    page_info = extract_page_info.invoke(
-        {"response_data": state["page_response"]}
+    page_data = get_facebook_page_info.invoke(
+        {"social_account_id": social_account_id}
     )
-    if not page_info or len(page_info) != 2:
-        raise RuntimeError("extract_page_info did not return page ID and access token")
+    if not page_data:
+        raise RuntimeError("get_facebook_page_info returned no page data")
 
-    page_id, access_token = page_info
-    return {"page_id": page_id, "access_token": access_token}
+    page_id = page_data.get("id")
+    access_token = page_data.get("access_token")
+    if not page_id or not access_token:
+        raise RuntimeError("Facebook page data is missing an ID or access token")
+
+    return {
+        "page_response": page_data,
+        "page_id": page_id,
+        "access_token": access_token,
+    }
 
 
 def post_content_node(state: FacebookPostState) -> FacebookPostState:
@@ -79,14 +85,12 @@ workflow = StateGraph(FacebookPostState)
 workflow.add_node("search", search_node)
 workflow.add_node("generate_content", generate_content_node)
 workflow.add_node("get_facebook_page_info", get_page_info_node)
-workflow.add_node("extract_page_info", extract_page_info_node)
 workflow.add_node("post_content", post_content_node)
 
 workflow.add_edge(START, "search")
 workflow.add_edge("search", "generate_content")
 workflow.add_edge("generate_content", "get_facebook_page_info")
-workflow.add_edge("get_facebook_page_info", "extract_page_info")
-workflow.add_edge("extract_page_info", "post_content")
+workflow.add_edge("get_facebook_page_info", "post_content")
 workflow.add_edge("post_content", END)
 
 graph = workflow.compile()
@@ -100,6 +104,7 @@ if __name__ == "__main__":
                 "BIRDS Bangalore Institute respiratory diseases sleep disorders "
                 "clinic services pulmobirds.in"
             ),
+            "social_account_id": "SOCIAL_ACCOUNT_UUID",
         }
     )
     
