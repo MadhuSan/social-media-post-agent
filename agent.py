@@ -2,7 +2,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from tools.webSearch import search
-from tools.postToFacebookPage import get_facebook_page_info, post_content
+from tools.postToFacebookPage import save_content_draft
 from models import model
 import prompts.birdsPrompt
 import json
@@ -20,10 +20,7 @@ class FacebookPostState(TypedDict, total=False):
     social_account_id: str
     search_result: str
     generated_content: str
-    page_response: dict[str, Any]
-    page_id: str
-    access_token: str
-    post_result: Any
+    draft_result: dict[str, str]
 
 
 def search_node(state: FacebookPostState) -> FacebookPostState:
@@ -47,51 +44,29 @@ def generate_content_node(state: FacebookPostState) -> FacebookPostState:
     return {"generated_content": response.content}
 
 
-def get_page_info_node(state: FacebookPostState) -> FacebookPostState:
+def save_draft_node(state: FacebookPostState) -> FacebookPostState:
     social_account_id = state.get("social_account_id")
     if not social_account_id:
-        raise RuntimeError("social_account_id is required to load a Facebook page")
+        raise RuntimeError("social_account_id is required to save a draft")
 
-    page_data = get_facebook_page_info.invoke(
-        {"social_account_id": social_account_id}
-    )
-    if not page_data:
-        raise RuntimeError("get_facebook_page_info returned no page data")
-
-    page_id = page_data.get("id")
-    access_token = page_data.get("access_token")
-    if not page_id or not access_token:
-        raise RuntimeError("Facebook page data is missing an ID or access token")
-
-    return {
-        "page_response": page_data,
-        "page_id": page_id,
-        "access_token": access_token,
-    }
-
-
-def post_content_node(state: FacebookPostState) -> FacebookPostState:
-    post_result = post_content.invoke(
+    draft_result = save_content_draft.invoke(
         {
-            "page_id": state["page_id"],
-            "access_token": state["access_token"],
+            "social_account_id": social_account_id,
             "content": state["generated_content"],
         }
     )
-    return {"post_result": post_result}
+    return {"draft_result": draft_result}
 
 
 workflow = StateGraph(FacebookPostState)
 workflow.add_node("search", search_node)
 workflow.add_node("generate_content", generate_content_node)
-workflow.add_node("get_facebook_page_info", get_page_info_node)
-workflow.add_node("post_content", post_content_node)
+workflow.add_node("save_draft", save_draft_node)
 
 workflow.add_edge(START, "search")
 workflow.add_edge("search", "generate_content")
-workflow.add_edge("generate_content", "get_facebook_page_info")
-workflow.add_edge("get_facebook_page_info", "post_content")
-workflow.add_edge("post_content", END)
+workflow.add_edge("generate_content", "save_draft")
+workflow.add_edge("save_draft", END)
 
 graph = workflow.compile()
 

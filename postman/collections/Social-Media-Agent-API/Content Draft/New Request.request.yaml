@@ -1,0 +1,13 @@
+$kind: http-request
+url: https://undated-giggling-trembling.ngrok-free.dev/users/10ddb3db-6d27-4419-9c96-295487adcf59/content-drafts
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: " {\r
+
+    \    \"content\": \"Check out our latest update! 🚀 #socialmedia\"\r
+
+    \ }"
+order: 1790655034649

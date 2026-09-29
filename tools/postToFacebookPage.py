@@ -6,7 +6,7 @@ from langchain_community.tools import tool
 from sqlalchemy import select
 
 from backend.app.db.database import AsyncSessionLocal
-from backend.app.db.models import FacebookPage
+from backend.app.db.models import ContentDraft, FacebookPage, SocialAccount
 from backend.app.services.token_encryption import decrypt_token
 from backend.app.config import settings
 
@@ -50,7 +50,10 @@ def get_facebook_page_info(social_account_id: str, page_id: str):
 @tool
 def get_facebook_page_info(social_account_id: str):
     "Get the first stored Facebook page for a social account from PostgreSQL."
-    return asyncio.run(_get_facebook_page_info(UUID(social_account_id)))
+    pages = asyncio.run(_get_facebook_pages_info(UUID(social_account_id)))
+    if not pages:
+        raise RuntimeError("No Facebook page is stored for this social account")
+    return pages[0]
 
 @tool
 def post_content(page_id,access_token,content):
@@ -76,6 +79,28 @@ def post_content(page_id,access_token,content):
         raise RuntimeError(f"Facebook post failed: {response_data}")
 
     return response.json()
+
+
+async def _save_content_draft(social_account_id: UUID, content: str) -> dict[str, str]:
+    async with AsyncSessionLocal() as db:
+        account = await db.get(SocialAccount, social_account_id)
+        if account is None:
+            raise RuntimeError("Social account was not found")
+
+        draft = ContentDraft(user_id=account.user_id, content=content)
+        db.add(draft)
+        await db.commit()
+        await db.refresh(draft)
+        return {
+            "id": str(draft.id),
+            "status": draft.status,
+        }
+
+
+@tool
+def save_content_draft(social_account_id: str, content: str):
+    """Save generated content for user review before Facebook publication."""
+    return asyncio.run(_save_content_draft(UUID(social_account_id), content))
     
 
 
