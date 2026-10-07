@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from uuid import UUID
 
 import httpx
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from ..config import settings
 from ..db.database import get_db
@@ -14,10 +16,12 @@ from ..services.token_encryption import decrypt_token
 
 
 router = APIRouter(prefix="/users/{user_id}/content-drafts", tags=["Content Drafts"])
+logger = logging.getLogger(__name__)
 
 
 class ContentDraftCreate(BaseModel):
-    content: str = Field(min_length=1)
+    social_account_id: UUID
+    search_query: str = Field(min_length=1)
 
 
 class ContentDraftResponse(BaseModel):
@@ -50,14 +54,52 @@ async def get_user_or_404(user_id: UUID, db: AsyncSession) -> User:
 @router.post("", response_model=ContentDraftResponse, status_code=status.HTTP_201_CREATED)
 async def create_content_draft(
     user_id: UUID,
-    draft_data: ContentDraftCreate,
+    generation_request: ContentDraftCreate,
     db: AsyncSession = Depends(get_db),
 ):
     await get_user_or_404(user_id, db)
-    draft = ContentDraft(user_id=user_id, content=draft_data.content)
-    db.add(draft)
-    await db.commit()
-    await db.refresh(draft)
+
+    account_result = await db.execute(
+        select(SocialAccount).where(
+            SocialAccount.id == generation_request.social_account_id,
+            SocialAccount.user_id == user_id,
+            SocialAccount.provider == "facebook",
+        )
+    )
+    account = account_result.scalar_one_or_none()
+    if account is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Facebook social account not found for this user",
+        )
+
+    try:
+        from agent import graph
+        from prompts.birdsPrompt import system_prompt, user_prompt
+
+        result = await run_in_threadpool(
+            graph.invoke,
+            {
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "search_query": generation_request.search_query,
+                "social_account_id": str(account.id),
+            },
+        )
+        draft_id = UUID(result["draft_result"]["id"])
+    except Exception as error:
+        logger.exception("Content draft agent failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The agent could not generate or save a content draft.",
+        ) from error
+
+    draft = await db.get(ContentDraft, draft_id)
+    if draft is None or draft.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The agent did not return a saved draft for this user.",
+        )
     return draft
 
 

@@ -79,7 +79,9 @@ if __name__ == "__main__":
                 "BIRDS Bangalore Institute respiratory diseases sleep disorders "
                 "clinic services pulmobirds.in"
             ),
+            
             "social_account_id": "SOCIAL_ACCOUNT_UUID",
+            #"social_account_id": "987637f9-8cb5-4e4f-b18d-d1b2d02bc6dd",
         }
     )
     

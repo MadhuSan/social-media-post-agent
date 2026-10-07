@@ -1,6 +1,21 @@
 import asyncio
 import json
+import selectors
+from urllib import response
 from uuid import UUID
+
+
+def _run_async(coro):
+    """Run an async coroutine from sync code using SelectorEventLoop.
+
+    On Windows, Python defaults to ProactorEventLoop which psycopg (asyncpg)
+    does not support.  Explicitly creating a SelectorEventLoop avoids the
+    'Psycopg cannot use the ProactorEventLoop' InterfaceError.
+    """
+    return asyncio.run(
+        coro,
+        loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector()),
+    )
 
 from langchain_community.tools import tool
 from sqlalchemy import select
@@ -34,13 +49,13 @@ async def _get_facebook_pages_info(social_account_id: UUID) -> list[dict[str, st
 @tool
 def get_facebook_pages(social_account_id: str):
     """Get all stored Facebook pages so the user can select one."""
-    return asyncio.run(_get_facebook_pages_info(UUID(social_account_id)))
+    return _run_async(_get_facebook_pages_info(UUID(social_account_id)))
 
 
 @tool
 def get_facebook_page_info(social_account_id: str, page_id: str):
     """Get the selected Facebook page for a social account."""
-    pages = asyncio.run(_get_facebook_pages_info(UUID(social_account_id)))
+    pages = _run_async(_get_facebook_pages_info(UUID(social_account_id)))
     for page in pages:
         if page["id"] == page_id:
             return page
@@ -50,7 +65,7 @@ def get_facebook_page_info(social_account_id: str, page_id: str):
 @tool
 def get_facebook_page_info(social_account_id: str):
     "Get the first stored Facebook page for a social account from PostgreSQL."
-    pages = asyncio.run(_get_facebook_pages_info(UUID(social_account_id)))
+    pages = _run_async(_get_facebook_pages_info(UUID(social_account_id)))
     if not pages:
         raise RuntimeError("No Facebook page is stored for this social account")
     return pages[0]
@@ -87,6 +102,7 @@ async def _save_content_draft(social_account_id: UUID, content: str) -> dict[str
         if account is None:
             raise RuntimeError("Social account was not found")
 
+        print("draft content:", len(content), repr(content))
         draft = ContentDraft(user_id=account.user_id, content=content)
         db.add(draft)
         await db.commit()
@@ -100,7 +116,7 @@ async def _save_content_draft(social_account_id: UUID, content: str) -> dict[str
 @tool
 def save_content_draft(social_account_id: str, content: str):
     """Save generated content for user review before Facebook publication."""
-    return asyncio.run(_save_content_draft(UUID(social_account_id), content))
+    return _run_async(_save_content_draft(UUID(social_account_id), content))
     
 
 

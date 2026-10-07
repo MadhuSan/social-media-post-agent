@@ -1,5 +1,4 @@
 $kind: http-request
-name: New Request
 url: ""
 method: GET
 order: 2685502401697114
