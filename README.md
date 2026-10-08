@@ -2,6 +2,18 @@
 
 A Managed Deep Agent built with [`managed-deepagents`](https://github.com/langchain-ai/managed-deepagents-sdk).
 
+## Connfas landing page
+
+The initial Streamlit landing-page UI uses the Connfas network image as its background.
+Run it locally with:
+
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+The Sign in and Sign up buttons are visual placeholders until app-user authentication
+is added to the backend.
+
 ## Project structure
 
 ```text
