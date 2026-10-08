@@ -72,8 +72,9 @@ st.markdown(
             margin: 0 auto 2.5rem;
             font-size: clamp(1rem, 2.5vw, 1.25rem);
             line-height: 1.65;
-            max-width: 34rem;
+            max-width: none;
             text-align: center !important;
+            white-space: nowrap;
             width: 100%;
         }}
 
