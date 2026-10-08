@@ -47,28 +47,34 @@ st.markdown(
             font-size: 0.82rem;
             font-weight: 700;
             letter-spacing: 0.28em;
-            margin-bottom: 0.8rem;
-            text-align: center;
+            margin: 0 0 0.8rem;
             text-transform: uppercase;
         }}
 
-        h1 {{
+        .hero-content {{
+            margin: 0 auto;
+            text-align: center;
+            width: 100%;
+        }}
+
+        .hero-title {{
             color: #ffffff !important;
             font-size: clamp(3.5rem, 12vw, 6.5rem) !important;
             font-weight: 750 !important;
             letter-spacing: -0.065em !important;
             line-height: 1 !important;
             margin: 0 0 1.1rem !important;
-            text-align: center;
         }}
 
         .hero-copy {{
+            box-sizing: border-box;
             color: rgba(239, 248, 255, 0.86);
+            margin: 0 auto 2.5rem;
             font-size: clamp(1rem, 2.5vw, 1.25rem);
             line-height: 1.65;
-            margin: 0 auto 2.5rem;
             max-width: 34rem;
-            text-align: center;
+            text-align: center !important;
+            width: 100%;
         }}
 
         [data-testid="stButton"] button {{
@@ -109,10 +115,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="brand-kicker">Social, made simpler</div>', unsafe_allow_html=True)
-st.title("Connfas")
 st.markdown(
-    '<p class="hero-copy">Turn your ideas into thoughtful posts and share them with the people who matter.</p>',
+    """
+    <div class="hero-content">
+        <div class="brand-kicker">Social, made simpler</div>
+        <h1 class="hero-title">Connfas</h1>
+        <p class="hero-copy">Turn your ideas into thoughtful posts and share them with the people who matter.</p>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
