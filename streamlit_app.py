@@ -106,6 +106,19 @@ st.markdown(
             color: #ffffff;
         }}
 
+        [data-testid="stForm"] {{
+            background: rgba(5, 20, 36, 0.55);
+            border: 1px solid rgba(185, 239, 255, 0.24);
+            border-radius: 1rem;
+            margin: 1.5rem auto 0;
+            max-width: 34rem;
+            padding: 1.25rem;
+        }}
+
+        [data-testid="stForm"] label {{
+            color: #ffffff;
+        }}
+
         @media (max-width: 520px) {{
             .block-container {{
                 padding: 1.25rem;
@@ -134,9 +147,24 @@ with sign_up_column:
     sign_up_clicked = st.button("Sign up", type="secondary", use_container_width=True)
 
 if sign_in_clicked:
-    st.session_state["auth_notice"] = "Sign in is not connected yet."
+    st.session_state["show_sign_in"] = True
 elif sign_up_clicked:
     st.session_state["auth_notice"] = "Sign up is not connected yet."
 
-if notice := st.session_state.get("auth_notice"):
-    st.info(f"{notice} The current backend does not yet include app-user authentication.")
+if st.session_state.get("show_sign_in"):
+    with st.form("sign_in_form"):
+        st.text_input(
+            "Email or phone number",
+            placeholder="Enter your email or phone number",
+        )
+        submitted = st.form_submit_button(
+            "Submit",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if submitted:
+        st.info("Sign-in is a design preview only; authentication is not connected yet.")
+
+if sign_up_clicked:
+    st.info("Sign up is not connected yet.")
