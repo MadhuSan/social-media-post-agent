@@ -22,4 +22,5 @@ dependencies = [
     "alembic>=1.19.2",
     "cryptography>=50.0.1",
     "psycopg[binary]>=3.3.5",
+    "streamlit>=1.45.0",
 ]
