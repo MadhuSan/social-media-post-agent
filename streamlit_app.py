@@ -1,10 +1,13 @@
 import base64
+import os
 from pathlib import Path
 
+import httpx
 import streamlit as st
 
 
 BACKGROUND_IMAGE = Path(__file__).parent / "assets" / "connfas-network.jpg"
+BACKEND_API_URL = os.getenv("CONNFAS_API_URL", "http://localhost:8000").rstrip("/")
 
 st.set_page_config(
     page_title="Connfas",
@@ -148,23 +151,132 @@ with sign_up_column:
 
 if sign_in_clicked:
     st.session_state["show_sign_in"] = True
+    st.session_state.pop("otp_email", None)
+    st.session_state.pop("otp_verified", None)
 elif sign_up_clicked:
-    st.session_state["auth_notice"] = "Sign up is not connected yet."
-
-if st.session_state.get("show_sign_in"):
-    with st.form("sign_in_form"):
-        st.text_input(
-            "Email or phone number",
-            placeholder="Enter your email or phone number",
-        )
-        submitted = st.form_submit_button(
-            "Submit",
-            type="primary",
-            use_container_width=True,
-        )
-
-    if submitted:
-        st.info("Sign-in is a design preview only; authentication is not connected yet.")
+    st.session_state["show_sign_in"] = False
 
 if sign_up_clicked:
     st.info("Sign up is not connected yet.")
+
+if st.session_state.get("show_sign_in"):
+    otp_email = st.session_state.get("otp_email")
+
+    if otp_email is None:
+        with st.form("request_email_otp_form"):
+            email = st.text_input(
+                "Email address",
+                placeholder="Enter your email address",
+                autocomplete="email",
+            )
+            request_otp = st.form_submit_button(
+                "Send verification code",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if request_otp:
+            try:
+                response = httpx.post(
+                    f"{BACKEND_API_URL}/auth/email/send-otp",
+                    json={"email": email},
+                    timeout=20,
+                )
+            except httpx.RequestError:
+                st.error("Could not connect to Connfas. Check that the backend is running.")
+            else:
+                if response.is_success:
+                    st.session_state["otp_email"] = email.strip().lower()
+                    st.session_state.pop("otp_verified", None)
+                    st.success("If the address can receive email, a verification code has been sent.")
+                    st.rerun()
+                else:
+                    try:
+                        detail = response.json().get("detail")
+                    except ValueError:
+                        detail = None
+                    st.error(
+                        detail
+                        if isinstance(detail, str)
+                        else f"Could not send a verification code (HTTP {response.status_code})."
+                    )
+    elif st.session_state.get("otp_verified"):
+        if st.session_state.get("existing_user"):
+            st.success("Email verified. An existing Connfas account was found.")
+            st.info("Account sign-in is not implemented yet.")
+        else:
+            st.success("Email verified. No Connfas account was found for this address.")
+            st.info("Account registration is not implemented yet.")
+    else:
+        st.caption(f"Enter the verification code sent to {otp_email}.")
+        with st.form("verify_email_otp_form"):
+            code = st.text_input(
+                "Verification code",
+                placeholder="Enter the 6-digit code",
+                max_chars=6,
+                autocomplete="one-time-code",
+            )
+            verify_otp = st.form_submit_button(
+                "Verify email",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if verify_otp:
+            try:
+                response = httpx.post(
+                    f"{BACKEND_API_URL}/auth/email/verify-otp",
+                    json={"email": otp_email, "code": code},
+                    timeout=20,
+                )
+            except httpx.RequestError:
+                st.error("Could not connect to Connfas. Check that the backend is running.")
+            else:
+                if response.is_success:
+                    result = response.json()
+                    st.session_state["otp_verified"] = result["verified"]
+                    st.session_state["existing_user"] = result["existing_user"]
+                    st.rerun()
+                else:
+                    try:
+                        detail = response.json().get("detail")
+                    except ValueError:
+                        detail = None
+                    st.error(
+                        detail
+                        if isinstance(detail, str)
+                        else f"Could not verify the code (HTTP {response.status_code})."
+                    )
+
+        resend_column, change_email_column = st.columns(2)
+        with resend_column:
+            resend_otp = st.button("Resend code", use_container_width=True)
+        with change_email_column:
+            change_email = st.button("Change email", use_container_width=True)
+
+        if resend_otp:
+            try:
+                response = httpx.post(
+                    f"{BACKEND_API_URL}/auth/email/send-otp",
+                    json={"email": otp_email},
+                    timeout=20,
+                )
+            except httpx.RequestError:
+                st.error("Could not connect to Connfas. Check that the backend is running.")
+            else:
+                if response.is_success:
+                    st.success("If the address can receive email, a verification code has been sent.")
+                else:
+                    try:
+                        detail = response.json().get("detail")
+                    except ValueError:
+                        detail = None
+                    st.error(
+                        detail
+                        if isinstance(detail, str)
+                        else f"Could not resend the code (HTTP {response.status_code})."
+                    )
+
+        if change_email:
+            st.session_state.pop("otp_email", None)
+            st.rerun()

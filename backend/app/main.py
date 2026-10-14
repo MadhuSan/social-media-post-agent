@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from .routes.email_auth import router as email_auth_router
 from .routes.meta_auth import router as meta_auth_router
 from .routes.content_drafts import router as content_drafts_router
 from .routes.social_accounts import router as social_accounts_router
@@ -12,6 +13,7 @@ app = FastAPI(
 
 
 app.include_router(meta_auth_router)
+app.include_router(email_auth_router)
 app.include_router(content_drafts_router)
 app.include_router(social_accounts_router)
 app.include_router(users_router)

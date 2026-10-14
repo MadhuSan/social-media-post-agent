@@ -11,8 +11,34 @@ Run it locally with:
 uv run streamlit run streamlit_app.py
 ```
 
-The Sign in and Sign up buttons are visual placeholders until app-user authentication
-is added to the backend.
+The Sign in flow requests and verifies an email one-time code through the FastAPI
+backend. Configure SMTP in the repository `.env` file before requesting codes:
+
+```dotenv
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=your-smtp-username
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM_EMAIL="Connfas <no-reply@example.com>"
+SMTP_USE_SSL=false
+```
+
+Use SMTP port 587 with `SMTP_USE_SSL=false` for STARTTLS, or port 465 with
+`SMTP_USE_SSL=true` for implicit TLS. Apply the database migration before starting
+the backend:
+
+```bash
+uv run alembic upgrade head
+```
+
+The Streamlit UI calls `http://localhost:8000` by default. If the backend runs at a
+different URL, set `CONNFAS_API_URL` in the Streamlit process environment.
+
+The OTP API is available at `POST /auth/email/send-otp` and
+`POST /auth/email/verify-otp`. Codes expire after 10 minutes, are single-use,
+and have a resend cooldown and failed-attempt limit. Email verification reports
+whether an account already exists; creating accounts and establishing a signed-in
+session are not implemented yet. Sign up remains a placeholder.
 
 ## Project structure
 
