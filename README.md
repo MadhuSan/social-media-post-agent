@@ -38,7 +38,10 @@ The OTP API is available at `POST /auth/email/send-otp` and
 `POST /auth/email/verify-otp`. Codes expire after 10 minutes, are single-use,
 and have a resend cooldown and failed-attempt limit. Email verification reports
 whether an account already exists; creating accounts and establishing a signed-in
-session are not implemented yet. Sign up remains a placeholder.
+session are not implemented yet. After verification, the UI displays a platform
+selection home page. Facebook can be selected; connecting a page from the UI is not
+yet wired up, and Instagram, X, LinkedIn, and Pinterest are displayed as coming soon.
+Sign up remains a placeholder.
 
 ## Project structure
 
