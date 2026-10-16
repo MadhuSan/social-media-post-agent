@@ -8,6 +8,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -90,6 +91,13 @@ class EmailOtp(Base):
 
 class SocialAccount(Base):
     __tablename__ = "social_accounts"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "provider",
+            name="uq_social_accounts_user_provider",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -148,6 +156,13 @@ class SocialAccount(Base):
 
 class FacebookPage(Base):
     __tablename__ = "facebook_pages"
+    __table_args__ = (
+        UniqueConstraint(
+            "social_account_id",
+            "page_id",
+            name="uq_facebook_pages_account_page",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -5,12 +5,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..db.database import get_db
-from ..db.models import FacebookPage, SocialAccount, User
+from ..db.models import FacebookPage, User
+from ..services.social_accounts import upsert_facebook_page, upsert_social_account
 from ..services.token_encryption import decrypt_token, encrypt_token
 
 
@@ -57,25 +57,15 @@ async def create_social_account(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    social_account = SocialAccount(
+    social_account = await upsert_social_account(
+        db,
         user_id=user_id,
         provider=account_data.provider,
         provider_user_id=account_data.provider_user_id,
         access_token_encrypted=encrypt_token(account_data.access_token),
         token_expires_at=account_data.token_expires_at,
     )
-    db.add(social_account)
-
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The social account could not be created.",
-        )
-
-    await db.refresh(social_account)
+    await db.commit()
     return social_account
 
 
@@ -121,31 +111,15 @@ async def get_facebook_pages(
         if not page_id or not page_access_token:
             continue
 
-        result = await db.execute(
-            select(FacebookPage).where(
-                FacebookPage.social_account_id == social_account_id,
-                FacebookPage.page_id == page_id,
-            )
+        page = await upsert_facebook_page(
+            db,
+            social_account_id=social_account_id,
+            page_id=page_id,
+            page_name=page_data.get("name"),
+            page_access_token_encrypted=encrypt_token(page_access_token),
         )
-        page = result.scalar_one_or_none()
-
-        if page is None:
-            page = FacebookPage(
-                social_account_id=social_account_id,
-                page_id=page_id,
-                page_name=page_data.get("name"),
-                page_access_token_encrypted=encrypt_token(page_access_token),
-            )
-            db.add(page)
-        else:
-            page.page_name = page_data.get("name")
-            page.page_access_token_encrypted = encrypt_token(page_access_token)
-
         saved_pages.append(page)
 
     await db.commit()
-
-    for page in saved_pages:
-        await db.refresh(page)
 
     return saved_pages

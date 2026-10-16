@@ -5,12 +5,11 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..db.database import get_db
-from ..db.models import SocialAccount, User
+from ..services.social_accounts import upsert_social_account
 from ..services.token_encryption import encrypt_token
 
 
@@ -219,25 +218,13 @@ async def meta_callback(
             "Meta user ID is missing.",
         )
 
-    result = await db.execute(
-        select(SocialAccount).where(
-            SocialAccount.user_id == user_id,
-            SocialAccount.provider == "facebook",
-        )
+    social_account = await upsert_social_account(
+        db,
+        user_id=user_id,
+        provider="facebook",
+        provider_user_id=provider_user_id,
+        access_token_encrypted=encrypt_token(user_access_token),
     )
-    social_account = result.scalar_one_or_none()
-    if social_account is None:
-        social_account = SocialAccount(
-            user_id=user_id,
-            provider="facebook",
-            provider_user_id=provider_user_id,
-            access_token_encrypted=encrypt_token(user_access_token),
-        )
-        db.add(social_account)
-    else:
-        social_account.provider_user_id = provider_user_id
-        social_account.access_token_encrypted = encrypt_token(user_access_token)
-
     await db.commit()
 
     result = {
