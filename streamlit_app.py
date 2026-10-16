@@ -136,6 +136,20 @@ st.markdown(
             margin: 0 0 1.5rem;
         }}
 
+        .verified-email {{
+            background: rgba(5, 20, 36, 0.72);
+            border: 1px solid rgba(185, 239, 255, 0.3);
+            border-radius: 0.65rem;
+            color: #ffffff;
+            display: inline-block;
+            margin: 0 0 1.5rem;
+            padding: 0.55rem 0.85rem;
+        }}
+
+        .verified-email strong {{
+            color: #9be7ff;
+        }}
+
         .platform-name {{
             color: #ffffff;
             font-size: 1.2rem;
@@ -184,7 +198,11 @@ if st.session_state.get("otp_verified"):
         '<p class="home-description">Choose a platform where you want to publish.</p>',
         unsafe_allow_html=True,
     )
-    st.caption(f"Email verified: {st.session_state['otp_email']}")
+    st.markdown(
+        f'<div class="verified-email"><strong>Email verified:</strong> '
+        f'{st.session_state["otp_email"]}</div>',
+        unsafe_allow_html=True,
+    )
 
     platforms = (
         ("Facebook", "f", "Connect a Facebook Page", True),
