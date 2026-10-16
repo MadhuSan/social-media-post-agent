@@ -43,6 +43,7 @@ class SendOtpResponse(BaseModel):
 class VerifyOtpResponse(BaseModel):
     verified: bool
     existing_user: bool
+    user_id: str | None
 
 
 def _normalize_email(email: str) -> str:
@@ -198,11 +199,12 @@ async def verify_email_otp(
     await db.commit()
 
     existing_user = await db.scalar(
-        select(User.id)
+        select(User)
         .where(func.lower(User.email) == email)
         .limit(1)
     )
     return VerifyOtpResponse(
         verified=True,
         existing_user=existing_user is not None,
+        user_id=str(existing_user.id) if existing_user is not None else None,
     )

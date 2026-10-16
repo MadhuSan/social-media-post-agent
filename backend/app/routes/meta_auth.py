@@ -1,4 +1,5 @@
 import secrets
+from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
@@ -22,10 +23,32 @@ router = APIRouter(
 # TEMPORARY ONLY
 # Later this will move to Redis/database/session storage.
 oauth_states: dict[str, UUID] = {}
+oauth_frontend_redirects: set[str] = set()
+
+
+def _redirect_to_frontend(**params: str) -> RedirectResponse:
+    separator = "&" if "?" in settings.FRONTEND_URL else "?"
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}{separator}{urlencode(params)}",
+        status_code=302,
+    )
+
+
+def _oauth_failure(
+    frontend: bool,
+    status_code: int,
+    detail: str,
+) -> RedirectResponse:
+    if frontend:
+        return _redirect_to_frontend(meta_status="error")
+    raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.get("/login")
-async def meta_login(user_id: UUID = Query(...)):
+async def meta_login(
+    user_id: UUID = Query(...),
+    frontend: bool = Query(default=False),
+):
     """
     Starts Meta OAuth flow.
     """
@@ -35,6 +58,8 @@ async def meta_login(user_id: UUID = Query(...)):
 
     # Temporary storage for Phase 1
     oauth_states[state] = user_id
+    if frontend:
+        oauth_frontend_redirects.add(state)
 
     # Permissions we need for the Facebook Page flow.
     scopes = [
@@ -83,6 +108,10 @@ async def meta_callback(
 
     # User denied permission or Meta returned an error
     if error:
+        if state and state in oauth_frontend_redirects:
+            oauth_frontend_redirects.discard(state)
+            oauth_states.pop(state, None)
+            return _redirect_to_frontend(meta_status="denied")
         raise HTTPException(
             status_code=400,
             detail={
@@ -109,6 +138,8 @@ async def meta_callback(
 
     # Remove state so it cannot be reused
     oauth_states.pop(state, None)
+    redirect_to_frontend = state in oauth_frontend_redirects
+    oauth_frontend_redirects.discard(state)
 
     token_url = (
         f"https://graph.facebook.com/"
@@ -122,39 +153,71 @@ async def meta_callback(
         "code": code,
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            token_url,
-            params=params,
-            timeout=30.0
-        )
-
-        if response.status_code != 200:
-            raise HTTPException(status_code=400, detail=response.json())
-
-        token_data = response.json()
-        user_access_token = token_data.get("access_token")
-        if not user_access_token:
-            raise HTTPException(
-                status_code=400,
-                detail="Meta did not return an access token",
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                token_url,
+                params=params,
+                timeout=30.0
             )
 
-        user_response = await client.get(
-            f"https://graph.facebook.com/{settings.META_API_VERSION}/me",
-            params={"fields": "id", "access_token": user_access_token},
-            timeout=30.0,
-        )
+            if response.status_code != 200:
+                return _oauth_failure(
+                    redirect_to_frontend,
+                    502,
+                    "Meta could not complete the authorization.",
+                )
 
-    if user_response.status_code != 200:
+            try:
+                token_data = response.json()
+            except ValueError:
+                return _oauth_failure(
+                    redirect_to_frontend,
+                    502,
+                    "Meta returned an invalid authorization response.",
+                )
+            user_access_token = token_data.get("access_token")
+            if not user_access_token:
+                return _oauth_failure(
+                    redirect_to_frontend,
+                    502,
+                    "Meta did not return an access token.",
+                )
+
+            user_response = await client.get(
+                f"https://graph.facebook.com/{settings.META_API_VERSION}/me",
+                params={"fields": "id", "access_token": user_access_token},
+                timeout=30.0,
+            )
+    except httpx.HTTPError as error:
+        if redirect_to_frontend:
+            return _redirect_to_frontend(meta_status="error")
         raise HTTPException(
             status_code=502,
-            detail="Meta did not return the authenticated user details",
+            detail="Meta could not complete the authorization.",
+        ) from error
+
+    if user_response.status_code != 200:
+        return _oauth_failure(
+            redirect_to_frontend,
+            502,
+            "Meta did not return the authenticated user details.",
         )
 
-    provider_user_id = user_response.json().get("id")
+    try:
+        provider_user_id = user_response.json().get("id")
+    except ValueError:
+        return _oauth_failure(
+            redirect_to_frontend,
+            502,
+            "Meta returned invalid user details.",
+        )
     if not provider_user_id:
-        raise HTTPException(status_code=502, detail="Meta user ID is missing")
+        return _oauth_failure(
+            redirect_to_frontend,
+            502,
+            "Meta user ID is missing.",
+        )
 
     result = await db.execute(
         select(SocialAccount).where(
@@ -177,7 +240,13 @@ async def meta_callback(
 
     await db.commit()
 
-    return {
+    result = {
         "message": "Meta authentication successful",
         "social_account_id": str(social_account.id),
     }
+    if redirect_to_frontend:
+        return _redirect_to_frontend(
+            meta_status="success",
+            social_account_id=str(social_account.id),
+        )
+    return result

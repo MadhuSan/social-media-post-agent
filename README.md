@@ -33,15 +33,25 @@ uv run alembic upgrade head
 
 The Streamlit UI calls `http://localhost:8000` by default. If the backend runs at a
 different URL, set `CONNFAS_API_URL` in the Streamlit process environment.
+For local development, run the backend and UI in separate terminals:
+
+```bash
+uv run uvicorn backend.app.main:app --reload --port 8000
+uv run streamlit run streamlit_app.py
+```
 
 The OTP API is available at `POST /auth/email/send-otp` and
 `POST /auth/email/verify-otp`. Codes expire after 10 minutes, are single-use,
 and have a resend cooldown and failed-attempt limit. Email verification reports
 whether an account already exists; creating accounts and establishing a signed-in
 session are not implemented yet. After verification, the UI displays a platform
-selection home page. Facebook can be selected; connecting a page from the UI is not
-yet wired up, and Instagram, X, LinkedIn, and Pinterest are displayed as coming soon.
-Sign up remains a placeholder.
+selection home page. For an existing Connfas user, selecting Facebook starts Meta
+OAuth, loads the user's Facebook Pages, generates a post draft from a topic, and
+publishes the reviewed draft to the selected Page. Configure Meta's OAuth redirect
+URI to match `META_REDIRECT_URI`, and set `FRONTEND_URL` to the Streamlit URL so
+the OAuth callback can return to the UI. Instagram, X, LinkedIn, and Pinterest are
+displayed as coming soon. New-user registration and a signed-in session are not
+implemented; sign up remains a placeholder.
 
 ## Project structure
 

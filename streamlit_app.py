@@ -16,6 +16,26 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+meta_status = st.query_params.get("meta_status")
+if meta_status == "success":
+    social_account_id = st.query_params.get("social_account_id")
+    if social_account_id:
+        st.session_state["facebook_social_account_id"] = social_account_id
+        st.session_state["selected_platform"] = "Facebook"
+        st.session_state.pop("facebook_pages", None)
+        st.session_state.pop("facebook_draft", None)
+        st.session_state["meta_notice"] = "Facebook connected successfully."
+    else:
+        st.session_state["meta_notice"] = "Facebook connected, but the account ID was missing."
+    st.query_params.clear()
+elif meta_status in ("denied", "error"):
+    st.session_state["meta_notice"] = (
+        "Facebook connection was cancelled."
+        if meta_status == "denied"
+        else "Facebook connection failed. Check your Meta app settings and try again."
+    )
+    st.query_params.clear()
+
 image_data = base64.b64encode(BACKGROUND_IMAGE.read_bytes()).decode("ascii")
 
 st.markdown(
@@ -230,6 +250,7 @@ if st.session_state.get("otp_verified"):
                     disabled=not available,
                 ):
                     st.session_state["selected_platform"] = name
+                    st.rerun()
 
     first_row = st.columns(3, gap="medium")
     for platform, column in zip(platforms[:3], first_row):
@@ -239,11 +260,164 @@ if st.session_state.get("otp_verified"):
     render_platform(platforms[3], second_row[1])
     render_platform(platforms[4], second_row[2])
 
+    if notice := st.session_state.pop("meta_notice", None):
+        if "successfully" in notice:
+            st.success(notice)
+        else:
+            st.warning(notice)
+
     if st.session_state.get("selected_platform") == "Facebook":
-        st.info(
-            "Facebook is selected. Connecting a Facebook account and choosing a Page "
-            "are not yet wired into this home page."
-        )
+        st.subheader("Facebook publishing")
+        user_id = st.session_state.get("user_id")
+        social_account_id = st.session_state.get("facebook_social_account_id")
+
+        if not user_id:
+            st.info(
+                "This email is verified, but no Connfas account exists for it yet. "
+                "Account registration is required before connecting Facebook."
+            )
+        elif not social_account_id:
+            oauth_url = (
+                f"{BACKEND_API_URL}/auth/meta/login?"
+                f"user_id={user_id}&frontend=true"
+            )
+            st.markdown(
+                "Connect the Facebook account that manages the Page you want to publish to."
+            )
+            st.link_button(
+                "Connect Facebook",
+                oauth_url,
+                type="primary",
+                use_container_width=True,
+            )
+        else:
+            pages = st.session_state.get("facebook_pages")
+            if pages is None:
+                try:
+                    response = httpx.get(
+                        f"{BACKEND_API_URL}/social-accounts/"
+                        f"{social_account_id}/facebook-pages",
+                        timeout=35,
+                    )
+                except httpx.RequestError:
+                    st.error("Could not connect to Connfas. Check that the backend is running.")
+                else:
+                    if response.is_success:
+                        pages = response.json()
+                        st.session_state["facebook_pages"] = pages
+                    else:
+                        try:
+                            detail = response.json().get("detail")
+                        except ValueError:
+                            detail = None
+                        st.error(
+                            detail
+                            if isinstance(detail, str)
+                            else f"Could not load Facebook Pages (HTTP {response.status_code})."
+                        )
+
+            if pages:
+                page_by_label = {
+                    f"{page.get('page_name') or 'Facebook Page'} ({page['page_id']})": page
+                    for page in pages
+                }
+                selected_page_label = st.selectbox(
+                    "Choose a Facebook Page",
+                    list(page_by_label),
+                )
+                selected_page = page_by_label[selected_page_label]
+
+                with st.form("generate_facebook_draft_form"):
+                    search_query = st.text_input(
+                        "What would you like to post about?",
+                        placeholder="Enter a topic for your Facebook post",
+                    )
+                    generate_draft = st.form_submit_button(
+                        "Generate post draft",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if generate_draft:
+                    if not search_query.strip():
+                        st.warning("Enter a topic before generating a post.")
+                    else:
+                        try:
+                            response = httpx.post(
+                                f"{BACKEND_API_URL}/users/{user_id}/content-drafts",
+                                json={
+                                    "social_account_id": social_account_id,
+                                    "search_query": search_query.strip(),
+                                },
+                                timeout=180,
+                            )
+                        except httpx.RequestError:
+                            st.error(
+                                "Could not connect to Connfas. Check that the backend is running."
+                            )
+                        else:
+                            if response.is_success:
+                                st.session_state["facebook_draft"] = response.json()
+                                st.session_state.pop("facebook_publish_result", None)
+                                st.rerun()
+                            else:
+                                try:
+                                    detail = response.json().get("detail")
+                                except ValueError:
+                                    detail = None
+                                st.error(
+                                    detail
+                                    if isinstance(detail, str)
+                                    else f"Could not generate a post (HTTP {response.status_code})."
+                                )
+
+                draft = st.session_state.get("facebook_draft")
+                if draft:
+                    st.markdown("#### Review your draft")
+                    st.text_area(
+                        "Generated content",
+                        value=draft["content"],
+                        height=220,
+                        disabled=True,
+                    )
+                    if draft.get("status") == "published":
+                        st.success("Post published to Facebook.")
+                    else:
+                        if st.button(
+                            f"Publish to {selected_page.get('page_name') or 'Facebook Page'}",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            try:
+                                response = httpx.post(
+                                    f"{BACKEND_API_URL}/users/{user_id}/content-drafts/"
+                                    f"{draft['id']}/approve",
+                                    json={"facebook_page_id": selected_page["id"]},
+                                    timeout=45,
+                                )
+                            except httpx.RequestError:
+                                st.error(
+                                    "Could not connect to Connfas. Check that the backend is running."
+                                )
+                            else:
+                                if response.is_success:
+                                    st.session_state["facebook_draft"] = response.json()
+                                    st.rerun()
+                                else:
+                                    try:
+                                        detail = response.json().get("detail")
+                                    except ValueError:
+                                        detail = None
+                                    st.error(
+                                        detail
+                                        if isinstance(detail, str)
+                                        else f"Could not publish the post (HTTP {response.status_code})."
+                                    )
+            elif pages == []:
+                st.warning("No Facebook Pages were found for this account.")
+            if st.button("Refresh Facebook Pages"):
+                st.session_state.pop("facebook_pages", None)
+                st.rerun()
 
     if st.button("Back to landing page"):
         for key in (
@@ -252,6 +426,11 @@ if st.session_state.get("otp_verified"):
             "existing_user",
             "selected_platform",
             "show_sign_in",
+            "user_id",
+            "facebook_social_account_id",
+            "facebook_pages",
+            "facebook_draft",
+            "facebook_publish_result",
         ):
             st.session_state.pop(key, None)
         st.rerun()
@@ -342,6 +521,7 @@ else:
                         result = response.json()
                         st.session_state["otp_verified"] = result["verified"]
                         st.session_state["existing_user"] = result["existing_user"]
+                        st.session_state["user_id"] = result["user_id"]
                         st.rerun()
                     else:
                         try:
