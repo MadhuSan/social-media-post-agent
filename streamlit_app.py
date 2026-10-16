@@ -1,6 +1,8 @@
 import base64
+import html
 import os
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 import streamlit as st
@@ -142,6 +144,27 @@ st.markdown(
             color: #ffffff;
         }}
 
+        .oauth-connect-button {{
+            align-items: center;
+            background: #1877f2;
+            border: 1px solid #1877f2;
+            border-radius: 999px;
+            color: #ffffff !important;
+            display: flex;
+            font-weight: 650;
+            justify-content: center;
+            margin-top: 0.5rem;
+            min-height: 3.15rem;
+            text-decoration: none !important;
+            transition: background-color 150ms ease, transform 150ms ease;
+            width: 100%;
+        }}
+
+        .oauth-connect-button:hover {{
+            background: #1669d8;
+            transform: translateY(-2px);
+        }}
+
         .home-heading {{
             color: #ffffff;
             margin: 0 0 0.4rem;
@@ -279,16 +302,15 @@ if st.session_state.get("otp_verified"):
         elif not social_account_id:
             oauth_url = (
                 f"{BACKEND_API_URL}/auth/meta/login?"
-                f"user_id={user_id}&frontend=true"
+                f"{urlencode({'user_id': user_id, 'frontend': 'true'})}"
             )
             st.markdown(
                 "Connect the Facebook account that manages the Page you want to publish to."
             )
-            st.link_button(
-                "Connect Facebook",
-                oauth_url,
-                type="primary",
-                use_container_width=True,
+            st.markdown(
+                f'<a class="oauth-connect-button" href="{html.escape(oauth_url, quote=True)}" '
+                'target="_self">Connect Facebook</a>',
+                unsafe_allow_html=True,
             )
         else:
             pages = st.session_state.get("facebook_pages")
