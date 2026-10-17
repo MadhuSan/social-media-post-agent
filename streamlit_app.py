@@ -206,6 +206,48 @@ st.markdown(
             min-height: 2.8rem;
         }}
 
+        [data-testid="stRadio"] > label {{
+            color: #ffffff;
+            font-weight: 650;
+        }}
+
+        [data-testid="stRadio"] [role="radiogroup"] {{
+            gap: 0.5rem;
+        }}
+
+        [data-testid="stRadio"] [role="radio"] {{
+            background: rgba(5, 20, 36, 0.45);
+            border: 1px solid rgba(185, 239, 255, 0.2);
+            border-radius: 0.7rem;
+            padding: 0.65rem 0.85rem;
+        }}
+
+        [data-testid="stRadio"] [role="radio"][aria-checked="true"] {{
+            background: rgba(31, 111, 153, 0.5);
+            border-color: #9be7ff;
+        }}
+
+        .selected-page {{
+            background: rgba(5, 20, 36, 0.72);
+            border: 1px solid rgba(155, 231, 255, 0.42);
+            border-radius: 0.7rem;
+            color: #ffffff;
+            margin: 0.75rem 0 1.25rem;
+            padding: 0.85rem 1rem;
+        }}
+
+        .selected-page-name {{
+            color: #9be7ff;
+            font-size: 1.05rem;
+            font-weight: 700;
+        }}
+
+        .selected-page-id {{
+            color: rgba(239, 248, 255, 0.75);
+            font-size: 0.85rem;
+            margin-top: 0.2rem;
+        }}
+
         @media (max-width: 520px) {{
             .block-container {{
                 padding: 1.25rem;
@@ -339,15 +381,37 @@ if st.session_state.get("otp_verified"):
                         )
 
             if pages:
-                page_by_label = {
-                    f"{page.get('page_name') or 'Facebook Page'} ({page['page_id']})": page
-                    for page in pages
-                }
-                selected_page_label = st.selectbox(
-                    "Choose a Facebook Page",
-                    list(page_by_label),
+                page_by_id = {page["id"]: page for page in pages}
+                selected_page_id = st.session_state.get("selected_facebook_page_id")
+                if selected_page_id not in page_by_id:
+                    selected_page_id = pages[0]["id"]
+
+                with st.container(border=True):
+                    st.markdown("### Choose a Facebook Page")
+                    st.caption(
+                        f"{len(pages)} Page{'s' if len(pages) != 1 else ''} available. "
+                        "Select where Connfas should publish."
+                    )
+                    selected_page_id = st.radio(
+                        "Available Facebook Pages",
+                        options=list(page_by_id),
+                        index=list(page_by_id).index(selected_page_id),
+                        format_func=lambda page_id: (
+                            f"{page_by_id[page_id].get('page_name') or 'Facebook Page'}"
+                            f"  |  Page ID: {page_by_id[page_id]['page_id']}"
+                        ),
+                        key="selected_facebook_page_id",
+                        label_visibility="collapsed",
+                    )
+                selected_page = page_by_id[selected_page_id]
+                st.markdown(
+                    f'<div class="selected-page">'
+                    f'<div class="selected-page-name">Selected: '
+                    f'{html.escape(selected_page.get("page_name") or "Facebook Page")}</div>'
+                    f'<div class="selected-page-id">Page ID: '
+                    f'{html.escape(selected_page["page_id"])}</div></div>',
+                    unsafe_allow_html=True,
                 )
-                selected_page = page_by_label[selected_page_label]
 
                 with st.form("generate_facebook_draft_form"):
                     search_query = st.text_input(
