@@ -24,7 +24,9 @@ if meta_status == "success":
     if social_account_id:
         st.session_state["facebook_social_account_id"] = social_account_id
         st.session_state["selected_platform"] = "Facebook"
+        st.session_state["current_page"] = "page_selection"
         st.session_state.pop("facebook_pages", None)
+        st.session_state.pop("selected_facebook_page_id", None)
         st.session_state.pop("facebook_draft", None)
         st.session_state["meta_notice"] = "Facebook connected successfully."
     else:
@@ -59,9 +61,9 @@ st.markdown(
         }}
 
         .block-container {{
-            max-width: 760px;
+            max-width: 900px;
             min-height: 100vh;
-            padding: 2rem 1.5rem;
+            padding: 1.5rem;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -99,7 +101,7 @@ st.markdown(
             line-height: 1.65;
             max-width: none;
             text-align: center !important;
-            white-space: nowrap;
+            overflow-wrap: anywhere;
             width: 100%;
         }}
 
@@ -176,7 +178,28 @@ st.markdown(
 
         .home-description {{
             color: rgba(239, 248, 255, 0.82);
-            margin: 0 0 1.5rem;
+            margin: 0 0 1rem;
+        }}
+
+        .app-heading {{
+            color: #ffffff !important;
+            margin: 0 0 0.35rem;
+        }}
+
+        .app-heading h1, .app-heading h2 {{
+            color: #ffffff !important;
+            margin-bottom: 0.35rem;
+        }}
+
+        .app-description {{
+            color: rgba(239, 248, 255, 0.82) !important;
+            margin: 0 0 1rem;
+        }}
+
+        [data-testid="stVerticalBlockBorderWrapper"] {{
+            background: rgba(5, 20, 36, 0.72);
+            border-color: rgba(185, 239, 255, 0.28);
+            border-radius: 1rem;
         }}
 
         .verified-email {{
@@ -195,20 +218,30 @@ st.markdown(
 
         .platform-name {{
             color: #ffffff;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: 700;
-            margin: 0.5rem 0 0.25rem;
+            margin: 0 0 0.2rem;
         }}
 
         .platform-description {{
             color: rgba(239, 248, 255, 0.75);
-            font-size: 0.9rem;
-            min-height: 2.8rem;
+            font-size: 0.85rem;
+            min-height: 1.4rem;
         }}
 
         [data-testid="stRadio"] > label {{
-            color: #ffffff;
+            color: #ffffff !important;
             font-weight: 650;
+        }}
+
+        [data-testid="stRadio"] [role="radio"],
+        [data-testid="stRadio"] [role="radio"] *,
+        [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {{
+            color: #ffffff !important;
+        }}
+
+        [data-testid="stCaptionContainer"] {{
+            color: #ffffff !important;
         }}
 
         [data-testid="stRadio"] [role="radiogroup"] {{
@@ -227,6 +260,17 @@ st.markdown(
             border-color: #9be7ff;
         }}
 
+        .draft-content {{
+            background: #ffffff;
+            border: 1px solid rgba(8, 36, 58, 0.16);
+            border-radius: 0.7rem;
+            color: #172b3a;
+            line-height: 1.65;
+            overflow-wrap: anywhere;
+            padding: 1rem 1.1rem;
+            white-space: pre-wrap;
+        }}
+
         .selected-page {{
             background: rgba(5, 20, 36, 0.72);
             border: 1px solid rgba(155, 231, 255, 0.42);
@@ -243,14 +287,23 @@ st.markdown(
         }}
 
         .selected-page-id {{
-            color: rgba(239, 248, 255, 0.75);
+            color: #ffffff;
             font-size: 0.85rem;
             margin-top: 0.2rem;
         }}
 
         @media (max-width: 520px) {{
             .block-container {{
-                padding: 1.25rem;
+                padding: 1rem;
+                justify-content: flex-start;
+            }}
+
+            .hero-title {{
+                font-size: clamp(3rem, 18vw, 4.5rem) !important;
+            }}
+
+            .hero-copy {{
+                white-space: normal;
             }}
         }}
     </style>
@@ -258,81 +311,69 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    """
-    <div class="hero-content">
-        <div class="brand-kicker">Social, made simpler</div>
-        <h1 class="hero-title">Connfas</h1>
-        <p class="hero-copy">Turn your ideas into thoughtful posts and share them with the people who matter.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 if st.session_state.get("otp_verified"):
-    st.markdown(
-        """
-        <div class="home-heading">
-            <div class="brand-kicker">Connfas workspace</div>
-            <h1>Select a social platform</h1>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<p class="home-description">Choose a platform where you want to publish.</p>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div class="verified-email"><strong>Email verified:</strong> '
-        f'{st.session_state["otp_email"]}</div>',
-        unsafe_allow_html=True,
-    )
+    current_page = st.session_state.setdefault("current_page", "home")
+    if current_page == "home":
+        st.markdown(
+            """
+            <div class="app-heading">
+                <div class="brand-kicker">Connfas workspace</div>
+                <h1>Home</h1>
+            </div>
+            <p class="app-description">Choose a social platform to get started.</p>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="verified-email"><strong>Email verified:</strong> '
+            f'{html.escape(st.session_state["otp_email"])}</div>',
+            unsafe_allow_html=True,
+        )
 
-    platforms = (
-        ("Facebook", "f", "Connect a Facebook Page", True),
-        ("Instagram", "◎", "Instagram account connection coming soon", False),
-        ("X", "𝕏", "X account connection coming soon", False),
-        ("LinkedIn", "in", "LinkedIn account connection coming soon", False),
-        ("Pinterest", "P", "Pinterest account connection coming soon", False),
-    )
+        platforms = (
+            ("Facebook", "f", "Connect a Facebook Page", True),
+            ("Instagram", "◎", "Instagram account connection coming soon", False),
+            ("X", "𝕏", "X account connection coming soon", False),
+            ("LinkedIn", "in", "LinkedIn account connection coming soon", False),
+            ("Pinterest", "P", "Pinterest account connection coming soon", False),
+        )
 
-    def render_platform(platform: tuple[str, str, str, bool], column) -> None:
-        name, mark, description, available = platform
-        with column:
-            with st.container(border=True):
-                st.markdown(
-                    f'<div class="platform-name"><span aria-hidden="true">{mark}</span> &nbsp;{name}</div>'
-                    f'<div class="platform-description">{description}</div>',
-                    unsafe_allow_html=True,
-                )
-                selected = st.session_state.get("selected_platform") == name
-                if st.button(
-                    "Selected" if selected else f"Select {name}",
-                    key=f"select_platform_{name}",
-                    type="primary" if selected else "secondary",
-                    use_container_width=True,
-                    disabled=not available,
-                ):
-                    st.session_state["selected_platform"] = name
-                    st.rerun()
+        for row_start in range(0, len(platforms), 2):
+            provider_columns = st.columns(2, gap="medium")
+            for platform, column in zip(
+                platforms[row_start : row_start + 2], provider_columns
+            ):
+                name, mark, description, available = platform
+                with column:
+                    with st.container(border=True):
+                        st.markdown(
+                            f'<div class="platform-name"><span aria-hidden="true">{mark}</span> '
+                            f'&nbsp;{name}</div>'
+                            f'<div class="platform-description">{description}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        if st.button(
+                            f"Select {name}",
+                            key=f"select_platform_{name}",
+                            type="secondary",
+                            use_container_width=True,
+                            disabled=not available,
+                        ):
+                            st.session_state["selected_platform"] = name
+                            st.session_state["current_page"] = "page_selection"
+                            st.rerun()
 
-    first_row = st.columns(3, gap="medium")
-    for platform, column in zip(platforms[:3], first_row):
-        render_platform(platform, column)
-
-    second_row = st.columns([0.5, 1, 1, 0.5], gap="medium")
-    render_platform(platforms[3], second_row[1])
-    render_platform(platforms[4], second_row[2])
-
-    if notice := st.session_state.pop("meta_notice", None):
-        if "successfully" in notice:
-            st.success(notice)
-        else:
-            st.warning(notice)
-
-    if st.session_state.get("selected_platform") == "Facebook":
-        st.subheader("Facebook publishing")
+    elif current_page == "page_selection":
+        st.markdown(
+            """
+            <div class="app-heading">
+                <div class="brand-kicker">Facebook</div>
+                <h1>Select a Page</h1>
+            </div>
+            <p class="app-description">Choose where your approved post will be published.</p>
+            """,
+            unsafe_allow_html=True,
+        )
         user_id = st.session_state.get("user_id")
         social_account_id = st.session_state.get("facebook_social_account_id")
 
@@ -387,7 +428,7 @@ if st.session_state.get("otp_verified"):
                     selected_page_id = pages[0]["id"]
 
                 with st.container(border=True):
-                    st.markdown("### Choose a Facebook Page")
+                    st.markdown("#### Available Pages")
                     st.caption(
                         f"{len(pages)} Page{'s' if len(pages) != 1 else ''} available. "
                         "Select where Connfas should publish."
@@ -406,111 +447,166 @@ if st.session_state.get("otp_verified"):
                 selected_page = page_by_id[selected_page_id]
                 st.markdown(
                     f'<div class="selected-page">'
-                    f'<div class="selected-page-name">Selected: '
+                    f'<div class="selected-page-name">Selected Page: '
                     f'{html.escape(selected_page.get("page_name") or "Facebook Page")}</div>'
                     f'<div class="selected-page-id">Page ID: '
                     f'{html.escape(selected_page["page_id"])}</div></div>',
                     unsafe_allow_html=True,
                 )
 
-                with st.form("generate_facebook_draft_form"):
-                    search_query = st.text_input(
-                        "What would you like to post about?",
-                        placeholder="Enter a topic for your Facebook post",
-                    )
-                    generate_draft = st.form_submit_button(
-                        "Generate post draft",
-                        type="primary",
-                        use_container_width=True,
-                    )
-
-                if generate_draft:
-                    if not search_query.strip():
-                        st.warning("Enter a topic before generating a post.")
-                    else:
-                        try:
-                            response = httpx.post(
-                                f"{BACKEND_API_URL}/users/{user_id}/content-drafts",
-                                json={
-                                    "social_account_id": social_account_id,
-                                    "search_query": search_query.strip(),
-                                },
-                                timeout=180,
-                            )
-                        except httpx.RequestError:
-                            st.error(
-                                "Could not connect to Connfas. Check that the backend is running."
-                            )
-                        else:
-                            if response.is_success:
-                                st.session_state["facebook_draft"] = response.json()
-                                st.session_state.pop("facebook_publish_result", None)
-                                st.rerun()
-                            else:
-                                try:
-                                    detail = response.json().get("detail")
-                                except ValueError:
-                                    detail = None
-                                st.error(
-                                    detail
-                                    if isinstance(detail, str)
-                                    else f"Could not generate a post (HTTP {response.status_code})."
-                                )
-
-                draft = st.session_state.get("facebook_draft")
-                if draft:
-                    st.markdown("#### Review your draft")
-                    st.text_area(
-                        "Generated content",
-                        value=draft["content"],
-                        height=220,
-                        disabled=True,
-                    )
-                    if draft.get("status") == "published":
-                        st.success("Post published to Facebook.")
-                    else:
-                        if st.button(
-                            f"Publish to {selected_page.get('page_name') or 'Facebook Page'}",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            try:
-                                response = httpx.post(
-                                    f"{BACKEND_API_URL}/users/{user_id}/content-drafts/"
-                                    f"{draft['id']}/approve",
-                                    json={"facebook_page_id": selected_page["id"]},
-                                    timeout=45,
-                                )
-                            except httpx.RequestError:
-                                st.error(
-                                    "Could not connect to Connfas. Check that the backend is running."
-                                )
-                            else:
-                                if response.is_success:
-                                    st.session_state["facebook_draft"] = response.json()
-                                    st.rerun()
-                                else:
-                                    try:
-                                        detail = response.json().get("detail")
-                                    except ValueError:
-                                        detail = None
-                                    st.error(
-                                        detail
-                                        if isinstance(detail, str)
-                                        else f"Could not publish the post (HTTP {response.status_code})."
-                                    )
+                if st.button(
+                    "Continue to content creation",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    st.session_state["current_page"] = "content_creation"
+                    st.rerun()
             elif pages == []:
                 st.warning("No Facebook Pages were found for this account.")
-            if st.button("Refresh Facebook Pages"):
-                st.session_state.pop("facebook_pages", None)
+
+        back_column, _ = st.columns(2)
+        with back_column:
+            if st.button("Back to Home", use_container_width=True):
+                st.session_state["current_page"] = "home"
+                st.session_state.pop("selected_platform", None)
                 st.rerun()
 
-    if st.button("Back to landing page"):
+    elif current_page == "content_creation":
+        user_id = st.session_state.get("user_id")
+        social_account_id = st.session_state.get("facebook_social_account_id")
+        pages = st.session_state.get("facebook_pages") or []
+        selected_page_id = st.session_state.get("selected_facebook_page_id")
+        selected_page = next(
+            (page for page in pages if page["id"] == selected_page_id),
+            None,
+        )
+
+        if not user_id or not social_account_id or not selected_page:
+            st.session_state["current_page"] = "page_selection"
+            st.rerun()
+
+        st.markdown(
+            """
+            <div class="app-heading">
+                <div class="brand-kicker">Facebook</div>
+                <h1>Content Creation</h1>
+            </div>
+            <p class="app-description">Create and review a post before publishing it.</p>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="selected-page">'
+            f'<div class="selected-page-name">Publishing to '
+            f'{html.escape(selected_page.get("page_name") or "Facebook Page")}</div>'
+            f'<div class="selected-page-id">Page ID: '
+            f'{html.escape(selected_page["page_id"])}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        with st.form("generate_facebook_draft_form"):
+            search_query = st.text_input(
+                "What would you like to post about?",
+                placeholder="Enter a topic for your Facebook post",
+            )
+            generate_draft = st.form_submit_button(
+                "Generate post draft",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if generate_draft:
+            if not search_query.strip():
+                st.warning("Enter a topic before generating a post.")
+            else:
+                try:
+                    response = httpx.post(
+                        f"{BACKEND_API_URL}/users/{user_id}/content-drafts",
+                        json={
+                            "social_account_id": social_account_id,
+                            "search_query": search_query.strip(),
+                        },
+                        timeout=180,
+                    )
+                except httpx.RequestError:
+                    st.error(
+                        "Could not connect to Connfas. Check that the backend is running."
+                    )
+                else:
+                    if response.is_success:
+                        st.session_state["facebook_draft"] = response.json()
+                        st.session_state.pop("facebook_publish_result", None)
+                        st.rerun()
+                    else:
+                        try:
+                            detail = response.json().get("detail")
+                        except ValueError:
+                            detail = None
+                        st.error(
+                            detail
+                            if isinstance(detail, str)
+                            else f"Could not generate a post (HTTP {response.status_code})."
+                        )
+
+        draft = st.session_state.get("facebook_draft")
+        if draft:
+            st.markdown("#### Review your draft")
+            with st.container(border=True):
+                st.markdown(
+                    f'<div class="draft-content">{html.escape(draft["content"])}</div>',
+                    unsafe_allow_html=True,
+                )
+            if draft.get("status") == "published":
+                st.success("Post published to Facebook.")
+            else:
+                if st.button(
+                    f"Publish to {selected_page.get('page_name') or 'Facebook Page'}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    try:
+                        response = httpx.post(
+                            f"{BACKEND_API_URL}/users/{user_id}/content-drafts/"
+                            f"{draft['id']}/approve",
+                            json={"facebook_page_id": selected_page["id"]},
+                            timeout=45,
+                        )
+                    except httpx.RequestError:
+                        st.error(
+                            "Could not connect to Connfas. Check that the backend is running."
+                        )
+                    else:
+                        if response.is_success:
+                            st.session_state["facebook_draft"] = response.json()
+                            st.rerun()
+                        else:
+                            try:
+                                detail = response.json().get("detail")
+                            except ValueError:
+                                detail = None
+                            st.error(
+                                detail
+                                if isinstance(detail, str)
+                                else f"Could not publish the post (HTTP {response.status_code})."
+                            )
+
+        back_column, _ = st.columns(2)
+        with back_column:
+            if st.button("Back to Page Selection", use_container_width=True):
+                st.session_state["current_page"] = "page_selection"
+                st.rerun()
+
+    else:
+        st.session_state["current_page"] = "home"
+        st.rerun()
+
+    if st.button("Sign out", key="sign_out"):
         for key in (
             "otp_email",
             "otp_verified",
             "existing_user",
             "selected_platform",
+            "current_page",
             "show_sign_in",
             "user_id",
             "facebook_social_account_id",
@@ -521,6 +617,16 @@ if st.session_state.get("otp_verified"):
             st.session_state.pop(key, None)
         st.rerun()
 else:
+    st.markdown(
+        """
+        <div class="hero-content">
+            <div class="brand-kicker">Social, made simpler</div>
+            <h1 class="hero-title">Connfas</h1>
+            <p class="hero-copy">Turn your ideas into thoughtful posts and share them with the people who matter.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     sign_in_column, sign_up_column = st.columns(2, gap="medium")
     with sign_in_column:
         sign_in_clicked = st.button("Sign in", type="primary", use_container_width=True)
@@ -531,6 +637,7 @@ else:
         st.session_state["show_sign_in"] = True
         st.session_state.pop("otp_email", None)
         st.session_state.pop("otp_verified", None)
+        st.session_state.pop("current_page", None)
     elif sign_up_clicked:
         st.session_state["show_sign_in"] = False
 
@@ -608,6 +715,8 @@ else:
                         st.session_state["otp_verified"] = result["verified"]
                         st.session_state["existing_user"] = result["existing_user"]
                         st.session_state["user_id"] = result["user_id"]
+                        st.session_state["current_page"] = "home"
+                        st.session_state.pop("selected_platform", None)
                         st.rerun()
                     else:
                         try:
