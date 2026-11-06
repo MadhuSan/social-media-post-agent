@@ -29,12 +29,9 @@ STRUCTURE TO FOLLOW:
 5. Hashtags
 """
 
-user_prompt = f"""Generate social media post using search tool.
--The content is about BIRDS (Bangalore Institute of Respiratory diseases and Sleep disorders clinic and their services). 
--You can add sleeping disorder symptoms, causes, and treatments to the social media post. Do not add content which hurts feelings.
-- Use the website link for reference: {url}
--You can search internet for relevant information to generate the effective advertisement content.
--Remember:emojis instead of markdown, ready to copy-paste directly to Instagram/Facebook.
--Fetch page details using the tool get_facebook_page_info.
--Use the page id and access token returned by get_facebook_page_info.
--Post the content generated from search tool on facebook page by calling the tool post_content."""
+user_prompt = f"""Create a social media post about the requested topic using the provided search results as factual context.
+- Write for the organization, product, service, or subject identified by the requested topic; do not assume the post is about a particular organization.
+- Use this website as a reference when it is relevant to the topic: {url}
+- Do not invent facts or make unsupported health, product, or service claims.
+- Keep the tone respectful and avoid content that could hurt or stigmatize people.
+- Use emojis instead of Markdown and write copy suitable for a social media post."""

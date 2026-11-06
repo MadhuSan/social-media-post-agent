@@ -36,6 +36,7 @@ def generate_content_node(state: FacebookPostState) -> FacebookPostState:
                 "role": "user",
                 "content": (
                     f"{state['user_prompt']}\n\n"
+                    f"Requested topic: {state['search_query']}\n\n"
                     f"Use these search results as factual context:\n{state['search_result']}"
                 ),
             },
@@ -71,14 +72,15 @@ workflow.add_edge("save_draft", END)
 graph = workflow.compile()
 
 if __name__ == "__main__":
+    search_query = input("What would you like to post about? ").strip()
+    if not search_query:
+        raise ValueError("A search topic is required")
+
     result = graph.invoke(
         {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
-            "search_query": (
-                "BIRDS Bangalore Institute respiratory diseases sleep disorders "
-                "clinic services pulmobirds.in"
-            ),
+            "search_query": search_query,
             
             "social_account_id": "SOCIAL_ACCOUNT_UUID",
             #"social_account_id": "987637f9-8cb5-4e4f-b18d-d1b2d02bc6dd",
