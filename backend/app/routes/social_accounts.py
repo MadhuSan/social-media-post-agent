@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..db.database import get_db
-from ..db.models import FacebookPage, User
+from ..db.models import FacebookPage, SocialAccount, User
 from ..services.social_accounts import upsert_facebook_page, upsert_social_account
 from ..services.token_encryption import decrypt_token, encrypt_token
 

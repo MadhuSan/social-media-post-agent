@@ -53,6 +53,16 @@ the OAuth callback can return to the UI. Instagram, X, LinkedIn, and Pinterest a
 displayed as coming soon. New-user registration and a signed-in session are not
 implemented; sign up remains a placeholder.
 
+### Staying signed in across the Facebook redirect
+
+Connecting Facebook is a full-page redirect to Meta and back, which starts a new
+Streamlit session. Connfas therefore keeps the sign-in server-side (`app_sessions`
+table, 12 hour lifetime) and carries an opaque token in the UI URL as `?sid=...`.
+The Meta OAuth `state` is stored in the `oauth_states` table, so a backend reload
+cannot break an in-flight login. Run `uv run alembic upgrade head` after pulling
+these changes. If Facebook is cancelled or fails, the user returns to the
+workspace (still signed in) with a message instead of the sign-in page.
+
 ## Project structure
 
 ```text
