@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from ..config import settings
 from ..db.database import get_db
 from ..db.models import EmailOtp, User
+from ..services.sessions import create_session
 
 
 router = APIRouter(prefix="/auth/email", tags=["Email Authentication"])
@@ -44,6 +45,7 @@ class VerifyOtpResponse(BaseModel):
     verified: bool
     existing_user: bool
     user_id: str | None
+    session_token: str | None = None
 
 
 def _normalize_email(email: str) -> str:
@@ -203,8 +205,14 @@ async def verify_email_otp(
         .where(func.lower(User.email) == email)
         .limit(1)
     )
+    session_token = None
+    if existing_user is not None:
+        session_token = await create_session(db, existing_user.id)
+        await db.commit()
+
     return VerifyOtpResponse(
         verified=True,
         existing_user=existing_user is not None,
         user_id=str(existing_user.id) if existing_user is not None else None,
+        session_token=session_token,
     )

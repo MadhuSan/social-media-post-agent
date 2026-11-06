@@ -57,16 +57,10 @@ from langchain_openai import ChatOpenAI
 #
 # model = init_chat_model("groq:llama-3.3-70b-versatile")
 
-model_id="Qwen/Qwen3-235B-A22B"
+#model_id="Qwen/Qwen3-235B-A22B"
 #model_id = "openai/gpt-oss-120b"
 
-model = ChatOpenAI(
-  model=model_id,
-  base_url="https://router.huggingface.co/v1",
-  api_key=os.environ["HF_API_KEY"],
-  timeout=120,
-  max_retries=2,
-)
+#
 
 
 # Ollama: run models locally (no API key required)
@@ -74,7 +68,7 @@ model = ChatOpenAI(
 # Install the Ollama app first: https://ollama.com
 # Pull a model first, e.g.:  ollama pull qwen2.5:7b
 #
-#model = init_chat_model("ollama:gemma4:e2b")
+model = init_chat_model("ollama:gemma4:e2b")
 
 # Kimi (Moonshot AI): OpenAI-compatible hosted API
 # No extra install needed (langchain-openai is already a default dep)

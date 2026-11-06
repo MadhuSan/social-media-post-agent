@@ -18,25 +18,100 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-meta_status = st.query_params.get("meta_status")
-if meta_status == "success":
-    social_account_id = st.query_params.get("social_account_id")
-    if social_account_id:
-        st.session_state["facebook_social_account_id"] = social_account_id
-        st.session_state["selected_platform"] = "Facebook"
-        st.session_state.pop("facebook_pages", None)
-        st.session_state.pop("facebook_draft", None)
-        st.session_state["meta_notice"] = "Facebook connected successfully."
-    else:
-        st.session_state["meta_notice"] = "Facebook connected, but the account ID was missing."
-    st.query_params.clear()
-elif meta_status in ("denied", "error"):
-    st.session_state["meta_notice"] = (
-        "Facebook connection was cancelled."
-        if meta_status == "denied"
-        else "Facebook connection failed. Check your Meta app settings and try again."
+
+def _error_detail(response: httpx.Response, fallback: str) -> str:
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        detail = None
+    return detail if isinstance(detail, str) else fallback
+
+
+def _restore_session(token: str) -> tuple[dict | None, str | None, bool]:
+    """Exchange a session token for the signed-in user.
+
+    Returns (session, error_message, token_is_invalid).
+    """
+    try:
+        response = httpx.post(
+            f"{BACKEND_API_URL}/auth/session/restore",
+            json={"token": token},
+            timeout=10,
+        )
+    except httpx.RequestError:
+        return (
+            None,
+            "Connfas could not reach the backend to restore your session. "
+            "Check that it is running, then refresh this page.",
+            False,
+        )
+    if response.is_success:
+        try:
+            return response.json(), None, False
+        except ValueError:
+            return None, "Connfas returned an invalid session response.", False
+    return (
+        None,
+        _error_detail(response, "Your session has expired. Please sign in again."),
+        response.status_code in (400, 401),
     )
-    st.query_params.clear()
+
+
+def _apply_session(session: dict, token: str) -> None:
+    st.session_state["otp_verified"] = True
+    st.session_state["otp_email"] = session.get("email") or ""
+    st.session_state["existing_user"] = True
+    st.session_state["user_id"] = session["user_id"]
+    st.session_state["session_token"] = token
+    if session.get("social_account_id"):
+        st.session_state["facebook_social_account_id"] = session["social_account_id"]
+    else:
+        st.session_state.pop("facebook_social_account_id", None)
+    st.session_state["selected_platform"] = "Facebook"
+    for key in ("facebook_pages", "facebook_draft", "selected_facebook_page_id"):
+        st.session_state.pop(key, None)
+
+
+def _facebook_oauth_url(user_id: str) -> str:
+    return (
+        f"{BACKEND_API_URL}/auth/meta/login?"
+        f"{urlencode({'user_id': user_id, 'frontend': 'true'})}"
+    )
+
+
+# A full-page trip to Facebook and back starts a NEW Streamlit session, so
+# st.session_state is empty when the user returns. The login is therefore kept
+# server-side and its token travels in the URL (?sid=...), which survives the
+# redirect, a page refresh and a reconnecting tab.
+meta_status = st.query_params.get("meta_status")
+session_token = st.query_params.get("sid")
+
+if session_token and not st.session_state.get("otp_verified"):
+    session, error_message, token_is_invalid = _restore_session(session_token)
+    if session is not None:
+        _apply_session(session, session_token)
+    else:
+        st.session_state["meta_notice"] = error_message
+        if token_is_invalid:
+            del st.query_params["sid"]
+
+if meta_status:
+    if meta_status == "success":
+        if st.session_state.get("otp_verified"):
+            st.session_state["meta_notice"] = "Facebook connected successfully."
+        else:
+            st.session_state.setdefault(
+                "meta_notice",
+                "Facebook connected, but Connfas could not restore your session. "
+                "Please sign in again.",
+            )
+    elif meta_status == "denied":
+        st.session_state["meta_notice"] = "Facebook connection was cancelled."
+    else:
+        st.session_state["meta_notice"] = (
+            "Facebook connection failed. Check your Meta app settings and try again."
+        )
+    del st.query_params["meta_status"]
 
 image_data = base64.b64encode(BACKGROUND_IMAGE.read_bytes()).decode("ascii")
 
@@ -269,6 +344,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+if notice := st.session_state.pop("meta_notice", None):
+    if "successfully" in notice:
+        st.success(notice)
+    else:
+        st.warning(notice)
+
 if st.session_state.get("otp_verified"):
     st.markdown(
         """
@@ -325,12 +406,6 @@ if st.session_state.get("otp_verified"):
     render_platform(platforms[3], second_row[1])
     render_platform(platforms[4], second_row[2])
 
-    if notice := st.session_state.pop("meta_notice", None):
-        if "successfully" in notice:
-            st.success(notice)
-        else:
-            st.warning(notice)
-
     if st.session_state.get("selected_platform") == "Facebook":
         st.subheader("Facebook publishing")
         user_id = st.session_state.get("user_id")
@@ -342,12 +417,10 @@ if st.session_state.get("otp_verified"):
                 "Account registration is required before connecting Facebook."
             )
         elif not social_account_id:
-            oauth_url = (
-                f"{BACKEND_API_URL}/auth/meta/login?"
-                f"{urlencode({'user_id': user_id, 'frontend': 'true'})}"
-            )
+            oauth_url = _facebook_oauth_url(user_id)
             st.markdown(
-                "Connect the Facebook account that manages the Page you want to publish to."
+                "Connect the Facebook account that manages the Page you want to publish to. "
+                "The Page selector will appear here after the connection completes."
             )
             st.markdown(
                 f'<a class="oauth-connect-button" href="{html.escape(oauth_url, quote=True)}" '
@@ -500,13 +573,34 @@ if st.session_state.get("otp_verified"):
                                         else f"Could not publish the post (HTTP {response.status_code})."
                                     )
             elif pages == []:
-                st.warning("No Facebook Pages were found for this account.")
+                st.warning(
+                    "No Facebook Pages were shared with Connfas. Choose Reconnect "
+                    "Facebook and select the Pages you want to use on Facebook's "
+                    "permission screen."
+                )
             if st.button("Refresh Facebook Pages"):
                 st.session_state.pop("facebook_pages", None)
                 st.rerun()
+            st.markdown(
+                f'<a class="oauth-connect-button" '
+                f'href="{html.escape(_facebook_oauth_url(user_id), quote=True)}" '
+                'target="_self">Reconnect Facebook</a>',
+                unsafe_allow_html=True,
+            )
 
     if st.button("Back to landing page"):
+        if token := st.session_state.get("session_token"):
+            try:
+                httpx.post(
+                    f"{BACKEND_API_URL}/auth/session/logout",
+                    json={"token": token},
+                    timeout=10,
+                )
+            except httpx.RequestError:
+                pass
+        st.query_params.clear()
         for key in (
+            "session_token",
             "otp_email",
             "otp_verified",
             "existing_user",
@@ -608,6 +702,14 @@ else:
                         st.session_state["otp_verified"] = result["verified"]
                         st.session_state["existing_user"] = result["existing_user"]
                         st.session_state["user_id"] = result["user_id"]
+                        st.session_state["selected_platform"] = "Facebook"
+                        if token := result.get("session_token"):
+                            session, _, _ = _restore_session(token)
+                            if session is not None:
+                                _apply_session(session, token)
+                            else:
+                                st.session_state["session_token"] = token
+                            st.query_params["sid"] = token
                         st.rerun()
                     else:
                         try:

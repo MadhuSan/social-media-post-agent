@@ -2,11 +2,13 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
     String,
     Text,
+    false,
     func,
     UniqueConstraint,
 )
@@ -265,3 +267,56 @@ class ContentDraft(Base):
 
     user: Mapped["User"] = relationship(back_populates="content_drafts")
     facebook_page: Mapped[FacebookPage | None] = relationship()
+
+
+class OAuthState(Base):
+    """Pending Meta OAuth request. Stored in the database (not process memory)
+    so it survives backend reloads and works with more than one worker."""
+
+    __tablename__ = "oauth_states"
+
+    state: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    frontend: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class AppSession(Base):
+    """Server-side login session for the Connfas UI. Only a SHA-256 hash of the
+    session token is stored."""
+
+    __tablename__ = "app_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )

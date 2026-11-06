@@ -1,14 +1,19 @@
 import secrets
-from urllib.parse import urlencode
+from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..db.database import get_db
+from ..db.models import OAuthState, User
+from ..services.sessions import create_session, resolve_session
 from ..services.social_accounts import upsert_social_account
 from ..services.token_encryption import encrypt_token
 
@@ -19,46 +24,116 @@ router = APIRouter(
 )
 
 
-# TEMPORARY ONLY
-# Later this will move to Redis/database/session storage.
-oauth_states: dict[str, UUID] = {}
-oauth_frontend_redirects: set[str] = set()
+OAUTH_STATE_TTL = timedelta(minutes=10)
 
 
-def _redirect_to_frontend(**params: str) -> RedirectResponse:
-    separator = "&" if "?" in settings.FRONTEND_URL else "?"
-    return RedirectResponse(
-        url=f"{settings.FRONTEND_URL}{separator}{urlencode(params)}",
-        status_code=302,
+class FrontendHandoffRequest(BaseModel):
+    handoff_token: str = Field(min_length=32, max_length=128)
+
+
+class FrontendHandoffResponse(BaseModel):
+    user_id: UUID
+    email: str | None
+    social_account_id: UUID | None
+
+
+def _frontend_url(**params: str) -> str:
+    """FRONTEND_URL with the given query parameters merged in."""
+    parts = urlsplit(settings.FRONTEND_URL)
+    query = dict(parse_qsl(parts.query))
+    query.update(params)
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path or "/", urlencode(query), "")
     )
 
 
-def _oauth_failure(
+def _redirect_to_frontend(**params: str) -> RedirectResponse:
+    return RedirectResponse(url=_frontend_url(**params), status_code=302)
+
+
+async def _redirect_to_frontend_with_session(
+    db: AsyncSession,
+    user_id: UUID,
+    meta_status: str,
+) -> RedirectResponse:
+    """Send the browser back to the UI together with a restorable login session.
+
+    The trip to Facebook and back is a full-page navigation, which starts a brand
+    new Streamlit session. The session token is how the UI gets the user back,
+    whether Facebook succeeded, was cancelled, or failed.
+    """
+    token = await create_session(db, user_id)
+    await db.commit()
+    return _redirect_to_frontend(meta_status=meta_status, sid=token)
+
+
+async def _oauth_failure(
+    db: AsyncSession,
     frontend: bool,
+    user_id: UUID,
     status_code: int,
     detail: str,
 ) -> RedirectResponse:
     if frontend:
-        return _redirect_to_frontend(meta_status="error")
+        return await _redirect_to_frontend_with_session(db, user_id, "error")
     raise HTTPException(status_code=status_code, detail=detail)
+
+
+@router.post(
+    "/frontend-handoff",
+    response_model=FrontendHandoffResponse,
+)
+async def consume_frontend_handoff(
+    request: FrontendHandoffRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Kept for backwards compatibility; prefer POST /auth/session/restore.
+
+    The handoff token is now a login session token, so it can be presented more
+    than once (page refresh, reconnecting tab) until it expires.
+    """
+    info = await resolve_session(db, request.handoff_token)
+    if info is None:
+        raise HTTPException(
+            status_code=400,
+            detail="The Facebook login handoff is invalid or expired. Please connect again.",
+        )
+    return FrontendHandoffResponse(
+        user_id=info.user_id,
+        email=info.email,
+        social_account_id=info.social_account_id,
+    )
 
 
 @router.get("/login")
 async def meta_login(
     user_id: UUID = Query(...),
     frontend: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Starts Meta OAuth flow.
     """
 
+    if await db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
     # Generate a cryptographically secure random state
     state = secrets.token_urlsafe(32)
 
-    # Temporary storage for Phase 1
-    oauth_states[state] = user_id
-    if frontend:
-        oauth_frontend_redirects.add(state)
+    # Persisted (not in process memory) so a backend reload or a second worker
+    # between "login" and "callback" cannot invalidate the flow.
+    now = datetime.now(timezone.utc)
+    await db.execute(delete(OAuthState).where(OAuthState.expires_at <= now))
+    db.add(
+        OAuthState(
+            state=state,
+            user_id=user_id,
+            frontend=frontend,
+            expires_at=now + OAUTH_STATE_TTL,
+        )
+    )
+    await db.commit()
 
     # Permissions we need for the Facebook Page flow.
     scopes = [
@@ -105,12 +180,20 @@ async def meta_callback(
     Meta redirects the user here after login.
     """
 
+    now = datetime.now(timezone.utc)
+    oauth_state = await db.get(OAuthState, state) if state else None
+    if oauth_state is not None and oauth_state.expires_at <= now:
+        await db.delete(oauth_state)
+        await db.commit()
+        oauth_state = None
+
     # User denied permission or Meta returned an error
     if error:
-        if state and state in oauth_frontend_redirects:
-            oauth_frontend_redirects.discard(state)
-            oauth_states.pop(state, None)
-            return _redirect_to_frontend(meta_status="denied")
+        if oauth_state is not None and oauth_state.frontend:
+            user_id = oauth_state.user_id
+            await db.delete(oauth_state)
+            await db.commit()
+            return await _redirect_to_frontend_with_session(db, user_id, "denied")
         raise HTTPException(
             status_code=400,
             detail={
@@ -128,17 +211,17 @@ async def meta_callback(
         )
 
     # Validate state
-    user_id = oauth_states.get(state)
-    if user_id is None:
+    if oauth_state is None:
         raise HTTPException(
             status_code=400,
             detail="Invalid OAuth state"
         )
 
     # Remove state so it cannot be reused
-    oauth_states.pop(state, None)
-    redirect_to_frontend = state in oauth_frontend_redirects
-    oauth_frontend_redirects.discard(state)
+    user_id = oauth_state.user_id
+    redirect_to_frontend = oauth_state.frontend
+    await db.delete(oauth_state)
+    await db.commit()
 
     token_url = (
         f"https://graph.facebook.com/"
@@ -161,8 +244,10 @@ async def meta_callback(
             )
 
             if response.status_code != 200:
-                return _oauth_failure(
+                return await _oauth_failure(
+                    db,
                     redirect_to_frontend,
+                    user_id,
                     502,
                     "Meta could not complete the authorization.",
                 )
@@ -170,15 +255,19 @@ async def meta_callback(
             try:
                 token_data = response.json()
             except ValueError:
-                return _oauth_failure(
+                return await _oauth_failure(
+                    db,
                     redirect_to_frontend,
+                    user_id,
                     502,
                     "Meta returned an invalid authorization response.",
                 )
             user_access_token = token_data.get("access_token")
             if not user_access_token:
-                return _oauth_failure(
+                return await _oauth_failure(
+                    db,
                     redirect_to_frontend,
+                    user_id,
                     502,
                     "Meta did not return an access token.",
                 )
@@ -190,15 +279,17 @@ async def meta_callback(
             )
     except httpx.HTTPError as error:
         if redirect_to_frontend:
-            return _redirect_to_frontend(meta_status="error")
+            return await _redirect_to_frontend_with_session(db, user_id, "error")
         raise HTTPException(
             status_code=502,
             detail="Meta could not complete the authorization.",
         ) from error
 
     if user_response.status_code != 200:
-        return _oauth_failure(
+        return await _oauth_failure(
+            db,
             redirect_to_frontend,
+            user_id,
             502,
             "Meta did not return the authenticated user details.",
         )
@@ -206,14 +297,18 @@ async def meta_callback(
     try:
         provider_user_id = user_response.json().get("id")
     except ValueError:
-        return _oauth_failure(
+        return await _oauth_failure(
+            db,
             redirect_to_frontend,
+            user_id,
             502,
             "Meta returned invalid user details.",
         )
     if not provider_user_id:
-        return _oauth_failure(
+        return await _oauth_failure(
+            db,
             redirect_to_frontend,
+            user_id,
             502,
             "Meta user ID is missing.",
         )
@@ -227,13 +322,10 @@ async def meta_callback(
     )
     await db.commit()
 
-    result = {
+    if redirect_to_frontend:
+        return await _redirect_to_frontend_with_session(db, user_id, "success")
+
+    return {
         "message": "Meta authentication successful",
         "social_account_id": str(social_account.id),
     }
-    if redirect_to_frontend:
-        return _redirect_to_frontend(
-            meta_status="success",
-            social_account_id=str(social_account.id),
-        )
-    return result
