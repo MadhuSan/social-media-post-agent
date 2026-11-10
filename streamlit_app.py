@@ -117,6 +117,12 @@ if meta_status:
             st.session_state["current_page"] = "page_selection"
     del st.query_params["meta_status"]
 
+requested_screen = st.query_params.get("screen")
+if requested_screen in {"home", "page_selection", "content_creation"}:
+    st.session_state["current_page"] = requested_screen
+if page_id := st.query_params.get("facebook_page_id"):
+    st.session_state["selected_facebook_page_id"] = page_id
+
 image_data = base64.b64encode(BACKGROUND_IMAGE.read_bytes()).decode("ascii")
 
 st.markdown(
@@ -444,6 +450,8 @@ if st.session_state.get("otp_verified"):
                         ):
                             st.session_state["selected_platform"] = name
                             st.session_state["current_page"] = "page_selection"
+                            st.query_params["screen"] = "page_selection"
+                            st.query_params.pop("facebook_page_id", None)
                             st.rerun()
 
     elif current_page == "page_selection":
@@ -541,6 +549,8 @@ if st.session_state.get("otp_verified"):
                     use_container_width=True,
                 ):
                     st.session_state["current_page"] = "content_creation"
+                    st.query_params["screen"] = "content_creation"
+                    st.query_params["facebook_page_id"] = selected_page_id
                     st.rerun()
             elif pages == []:
                 st.warning(
@@ -557,6 +567,8 @@ if st.session_state.get("otp_verified"):
             if st.button("Back to Home", use_container_width=True):
                 st.session_state["current_page"] = "home"
                 st.session_state.pop("selected_platform", None)
+                st.query_params["screen"] = "home"
+                st.query_params.pop("facebook_page_id", None)
                 st.rerun()
             if user_id and social_account_id:
                 st.markdown(
@@ -569,15 +581,66 @@ if st.session_state.get("otp_verified"):
     elif current_page == "content_creation":
         user_id = st.session_state.get("user_id")
         social_account_id = st.session_state.get("facebook_social_account_id")
-        pages = st.session_state.get("facebook_pages") or []
-        selected_page_id = st.session_state.get("selected_facebook_page_id")
+        if not user_id or not social_account_id:
+            st.session_state["current_page"] = "page_selection"
+            st.query_params["screen"] = "page_selection"
+            st.rerun()
+
+        pages = st.session_state.get("facebook_pages")
+        if pages is None and social_account_id:
+            try:
+                response = httpx.get(
+                    f"{BACKEND_API_URL}/social-accounts/"
+                    f"{social_account_id}/facebook-pages",
+                    timeout=35,
+                )
+            except httpx.RequestError:
+                st.error("Could not connect to Connfas. Check that the backend is running.")
+                pages = []
+            else:
+                if response.is_success:
+                    pages = response.json()
+                    st.session_state["facebook_pages"] = pages
+                else:
+                    st.error(
+                        _error_detail(
+                            response,
+                            f"Could not load Facebook Pages (HTTP {response.status_code}).",
+                        )
+                    )
+                    pages = []
+
+        pages = pages or []
+        if not pages:
+            st.error(
+                "Could not restore the selected Facebook Page. Retry loading Pages "
+                "or return to Page selection."
+            )
+            retry_column, back_column = st.columns(2)
+            with retry_column:
+                if st.button("Retry loading Facebook Pages", use_container_width=True):
+                    st.session_state.pop("facebook_pages", None)
+                    st.rerun()
+            with back_column:
+                if st.button("Back to Page Selection", use_container_width=True):
+                    st.session_state["current_page"] = "page_selection"
+                    st.query_params["screen"] = "page_selection"
+                    st.rerun()
+            st.stop()
+
+        selected_page_id = (
+            st.query_params.get("facebook_page_id")
+            or st.session_state.get("selected_facebook_page_id")
+        )
         selected_page = next(
             (page for page in pages if page["id"] == selected_page_id),
             None,
         )
 
-        if not user_id or not social_account_id or not selected_page:
+        if pages and not selected_page:
             st.session_state["current_page"] = "page_selection"
+            st.query_params["screen"] = "page_selection"
+            st.query_params.pop("facebook_page_id", None)
             st.rerun()
 
         st.markdown(
@@ -614,36 +677,54 @@ if st.session_state.get("otp_verified"):
             if not search_query.strip():
                 st.warning("Enter a topic before generating a post.")
             else:
-                try:
-                    response = httpx.post(
-                        f"{BACKEND_API_URL}/users/{user_id}/content-drafts",
-                        json={
-                            "social_account_id": social_account_id,
-                            "search_query": search_query.strip(),
-                        },
-                        timeout=180,
-                    )
-                except httpx.RequestError:
-                    st.error(
-                        "Could not connect to Connfas. Check that the backend is running."
-                    )
-                else:
-                    if response.is_success:
-                        st.session_state["facebook_draft"] = response.json()
-                        st.session_state.pop("facebook_publish_result", None)
-                        st.rerun()
-                    else:
-                        try:
-                            detail = response.json().get("detail")
-                        except ValueError:
-                            detail = None
-                        st.error(
-                            detail
-                            if isinstance(detail, str)
-                            else f"Could not generate a post (HTTP {response.status_code})."
+                with st.spinner("Generating your post draft. This may take a few minutes..."):
+                    try:
+                        response = httpx.post(
+                            f"{BACKEND_API_URL}/users/{user_id}/content-drafts",
+                            json={
+                                "social_account_id": social_account_id,
+                                "search_query": search_query.strip(),
+                            },
+                            timeout=300,
                         )
+                    except httpx.RequestError:
+                        st.error(
+                            "Could not connect to Connfas. Check that the backend is running."
+                        )
+                    else:
+                        if response.is_success:
+                            st.session_state["facebook_draft"] = response.json()
+                            st.session_state.pop("facebook_publish_result", None)
+                            st.rerun()
+                        else:
+                            st.error(
+                                _error_detail(
+                                    response,
+                                    f"Could not generate a post (HTTP {response.status_code}).",
+                                )
+                            )
 
         draft = st.session_state.get("facebook_draft")
+        if draft is None and user_id:
+            try:
+                response = httpx.get(
+                    f"{BACKEND_API_URL}/users/{user_id}/content-drafts",
+                    params={"status": "pending"},
+                    timeout=20,
+                )
+            except httpx.RequestError:
+                st.warning("Could not check for a previously saved draft.")
+            else:
+                if response.is_success:
+                    drafts = response.json()
+                    if drafts:
+                        draft = drafts[0]
+                        st.session_state["facebook_draft"] = draft
+                else:
+                    st.warning(
+                        _error_detail(response, "Could not load your saved drafts.")
+                    )
+
         if draft:
             st.markdown("#### Review your draft")
             with st.container(border=True):
@@ -689,6 +770,7 @@ if st.session_state.get("otp_verified"):
         with back_column:
             if st.button("Back to Page Selection", use_container_width=True):
                 st.session_state["current_page"] = "page_selection"
+                st.query_params["screen"] = "page_selection"
                 st.rerun()
 
     else:
