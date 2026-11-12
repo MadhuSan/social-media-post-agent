@@ -51,29 +51,19 @@ from langchain_openai import ChatOpenAI
 
 # ═══ Open-Source / Alternative Hosted Models ══════════════════════════════════
 
-# Groq: fast hosted inference for Llama, Mixtral, and others (free tier available)
-# Install first:  uv add langchain-groq
-# Requires GROQ_API_KEY in .env  (get one at console.groq.com)
-#
-# model = init_chat_model("groq:llama-3.3-70b-versatile")
-
-# Hugging Face: provide HF_API_KEY, HUGGINGFACE_API_KEY, or HF_TOKEN.
-# OpenAI-compatible router endpoint for hosted HF models.
-model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-hf_api_key = (
-    os.getenv("HF_API_KEY")
-    or os.getenv("HUGGINGFACE_API_KEY")
-    or os.getenv("HF_TOKEN")
-)
-if not hf_api_key:
-    raise RuntimeError(
-        "Set HF_API_KEY, HUGGINGFACE_API_KEY, or HF_TOKEN to use Hugging Face."
-    )
+# GroqCloud's OpenAI-compatible API offers a free plan with model-specific limits.
+# Get a key at https://console.groq.com/keys and set GROQ_API_KEY.
+model_id = "openai/gpt-oss-20b"
+groq_api_key = os.getenv("GROQ_API_KEY")
+if not groq_api_key:
+    raise RuntimeError("Set GROQ_API_KEY to use GroqCloud inference.")
 
 model = ChatOpenAI(
     model=model_id,
-    base_url="https://router.huggingface.co/v1",
-    api_key=hf_api_key,
+    base_url="https://api.groq.com/openai/v1",
+    api_key=groq_api_key,
+    timeout=60,
+    max_retries=2,
 )
 
 

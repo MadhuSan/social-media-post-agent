@@ -2,6 +2,15 @@
 
 A Managed Deep Agent built with [`managed-deepagents`](https://github.com/langchain-ai/managed-deepagents-sdk).
 
+## Content generation model
+
+Content generation uses GroqCloud's OpenAI-compatible API with the
+`openai/gpt-oss-20b` model. Create an API key at
+<https://console.groq.com/keys> and set `GROQ_API_KEY` in the repository `.env`
+file for local development or in the backend hosting provider's secret settings
+for deployment. GroqCloud has a free plan with rate limits; check the current
+limits in your GroqCloud account.
+
 ## Connfas landing page
 
 The initial Streamlit landing-page UI uses the Connfas network image as its background.
