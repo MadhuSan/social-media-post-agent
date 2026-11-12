@@ -35,7 +35,6 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=True)
 from langchain.chat_models import init_chat_model
 
 from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
 # ═══ Default Models ══════════════════════════════════════════════════════════
 # Workshop default: Anthropic claude-haiku-4-5, fast and cost-effective.
 # Requires ANTHROPIC_API_KEY in .env
@@ -58,19 +57,23 @@ from langchain_ollama import ChatOllama
 #
 # model = init_chat_model("groq:llama-3.3-70b-versatile")
 
-# Hugging Face: requires HUGGINGFACE_API_KEY in .env
+# Hugging Face: provide HF_API_KEY, HUGGINGFACE_API_KEY, or HF_TOKEN.
 # OpenAI-compatible router endpoint for hosted HF models.
 model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-# model = ChatOpenAI(
-#   model=model_id,
-#   base_url="https://router.huggingface.co/v1",
-#   api_key=os.environ["HF_API_KEY"],
-# )
+hf_api_key = (
+    os.getenv("HF_API_KEY")
+    or os.getenv("HUGGINGFACE_API_KEY")
+    or os.getenv("HF_TOKEN")
+)
+if not hf_api_key:
+    raise RuntimeError(
+        "Set HF_API_KEY, HUGGINGFACE_API_KEY, or HF_TOKEN to use Hugging Face."
+    )
 
-model = ChatOllama(
-  model=model_id,
-  base_url="https://router.huggingface.co/v1",
-  api_key=os.environ["HF_API_KEY"],
+model = ChatOpenAI(
+    model=model_id,
+    base_url="https://router.huggingface.co/v1",
+    api_key=hf_api_key,
 )
 
 
