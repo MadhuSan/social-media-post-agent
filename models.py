@@ -35,6 +35,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=True)
 from langchain.chat_models import init_chat_model
 
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 # ═══ Default Models ══════════════════════════════════════════════════════════
 # Workshop default: Anthropic claude-haiku-4-5, fast and cost-effective.
 # Requires ANTHROPIC_API_KEY in .env
@@ -57,10 +58,20 @@ from langchain_openai import ChatOpenAI
 #
 # model = init_chat_model("groq:llama-3.3-70b-versatile")
 
-#model_id="Qwen/Qwen3-235B-A22B"
-#model_id = "openai/gpt-oss-120b"
+# Hugging Face: requires HUGGINGFACE_API_KEY in .env
+# OpenAI-compatible router endpoint for hosted HF models.
+model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+# model = ChatOpenAI(
+#   model=model_id,
+#   base_url="https://router.huggingface.co/v1",
+#   api_key=os.environ["HF_API_KEY"],
+# )
 
-#
+model = ChatOllama(
+  model=model_id,
+  base_url="https://router.huggingface.co/v1",
+  api_key=os.environ["HF_API_KEY"],
+)
 
 
 # Ollama: run models locally (no API key required)
@@ -68,7 +79,7 @@ from langchain_openai import ChatOpenAI
 # Install the Ollama app first: https://ollama.com
 # Pull a model first, e.g.:  ollama pull qwen2.5:7b
 #
-model = init_chat_model("ollama:gemma4:e2b")
+#model = init_chat_model("ollama:gemma4:e2b")
 
 # Kimi (Moonshot AI): OpenAI-compatible hosted API
 # No extra install needed (langchain-openai is already a default dep)
