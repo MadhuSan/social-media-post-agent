@@ -34,7 +34,9 @@ SMTP_USE_SSL=false
 
 Use SMTP port 587 with `SMTP_USE_SSL=false` for STARTTLS, or port 465 with
 `SMTP_USE_SSL=true` for implicit TLS. Apply the database migration before starting
-the backend:
+the backend. Alembic reads `DATABASE_URL` from the environment or `.env` and
+converts PostgreSQL URLs to the synchronous `psycopg` driver; the API uses its
+configured asynchronous database driver:
 
 ```bash
 uv run alembic upgrade head

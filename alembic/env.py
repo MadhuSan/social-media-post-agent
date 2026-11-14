@@ -1,10 +1,12 @@
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
+from sqlalchemy.engine import make_url
 from sqlalchemy import pool
 
 from alembic import context
 
+from backend.app.config import settings
 from backend.app.db.models import Base
 
 # this is the Alembic Config object, which provides
@@ -21,10 +23,23 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+# The application uses asyncpg, while Alembic's synchronous engine requires
+# psycopg. Use DATABASE_URL rather than the localhost placeholder in alembic.ini.
+database_url = make_url(settings.DATABASE_URL)
+if database_url.drivername not in {
+    "postgres",
+    "postgresql",
+    "postgresql+asyncpg",
+    "postgresql+psycopg",
+    "postgresql+psycopg2",
+}:
+    raise ValueError("DATABASE_URL must use PostgreSQL for Alembic migrations.")
+
+database_url = database_url.set(drivername="postgresql+psycopg")
+config.set_main_option(
+    "sqlalchemy.url",
+    database_url.render_as_string(hide_password=False).replace("%", "%%"),
+)
 
 
 def run_migrations_offline() -> None:
