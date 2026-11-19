@@ -14,12 +14,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:8501"
     DATABASE_URL: str
     TOKEN_ENCRYPTION_KEY: str
-    SMTP_HOST: str | None = None
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str | None = None
-    SMTP_PASSWORD: str | None = None
-    SMTP_FROM_EMAIL: str | None = None
-    SMTP_USE_SSL: bool = False
+    RESEND_API_KEY: str | None = None
+    EMAIL_FROM_ADDRESS: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

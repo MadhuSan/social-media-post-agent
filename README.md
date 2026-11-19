@@ -21,20 +21,22 @@ uv run streamlit run streamlit_app.py
 ```
 
 The Sign in flow requests and verifies an email one-time code through the FastAPI
-backend. Configure SMTP in the repository `.env` file before requesting codes:
+backend. OTP delivery uses Resend's HTTPS API. Create a Resend API key, verify a
+domain you own in Resend, and configure the backend environment:
 
 ```dotenv
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USERNAME=your-smtp-username
-SMTP_PASSWORD=your-smtp-password
-SMTP_FROM_EMAIL="Connfas <no-reply@example.com>"
-SMTP_USE_SSL=false
+RESEND_API_KEY=re_your_api_key
+EMAIL_FROM_ADDRESS="Connfas <no-reply@mail.example.com>"
 ```
 
-Use SMTP port 587 with `SMTP_USE_SSL=false` for STARTTLS, or port 465 with
-`SMTP_USE_SSL=true` for implicit TLS. Apply the database migration before starting
-the backend. Alembic reads `DATABASE_URL` from the environment or `.env` and
+`EMAIL_FROM_ADDRESS` must use the verified Resend domain. The Resend free plan
+currently includes 3,000 emails per month, with a limit of 100 emails per day;
+check Resend's [current pricing](https://resend.com/pricing). For Render, add
+`RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` to the FastAPI service's environment
+variables. For local development, put them in the repository `.env` file.
+
+Apply the database migration before starting the backend. Alembic reads
+`DATABASE_URL` from the environment or `.env` and
 converts PostgreSQL URLs to the synchronous `psycopg` driver; the API uses its
 configured asynchronous database driver:
 
