@@ -2,13 +2,17 @@ import hashlib
 import hmac
 import logging
 import secrets
+import smtplib
+import ssl
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from ..config import settings
 from ..db.database import get_db
@@ -55,45 +59,96 @@ def _hash_otp(email: str, code: str) -> str:
     return hmac.new(key, message, hashlib.sha256).hexdigest()
 
 
-async def _send_otp_email(email: str, code: str) -> None:
-    if not settings.RESEND_API_KEY or not settings.EMAIL_FROM_ADDRESS:
+def _send_otp_email_smtp(email: str, code: str) -> None:
+    if bool(settings.SMTP_USERNAME) != bool(settings.SMTP_PASSWORD):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email API delivery is not configured.",
+            detail="Email delivery is not configured correctly.",
         )
 
+    message = EmailMessage()
+    message["Subject"] = "Your Connfas verification code"
+    message["From"] = settings.SMTP_FROM_EMAIL
+    message["To"] = email
+    message.set_content(
+        f"Your Connfas verification code is {code}.\n\n"
+        "It expires in 10 minutes. If you did not request this code, "
+        "you can ignore this email."
+    )
+
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-                json={
-                    "from": settings.EMAIL_FROM_ADDRESS,
-                    "to": [email],
-                    "subject": "Your Connfas verification code",
-                    "text": (
-                        f"Your Connfas verification code is {code}.\n\n"
-                        "It expires in 10 minutes. If you did not request this code, "
-                        "you can ignore this email."
-                    ),
-                },
+        if settings.SMTP_USE_SSL:
+            with smtplib.SMTP_SSL(
+                settings.SMTP_HOST,
+                settings.SMTP_PORT,
+                timeout=15,
+                context=ssl.create_default_context(),
+            ) as server:
+                if settings.SMTP_USERNAME:
+                    server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                server.send_message(message)
+        else:
+            with smtplib.SMTP(
+                settings.SMTP_HOST,
+                settings.SMTP_PORT,
+                timeout=15,
+            ) as server:
+                server.starttls(context=ssl.create_default_context())
+                if settings.SMTP_USERNAME:
+                    server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                server.send_message(message)
+    except (OSError, smtplib.SMTPException):
+        logger.exception("Failed to send email verification code")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The verification email could not be sent.",
+        ) from None
+
+
+async def _send_otp_email(email: str, code: str) -> None:
+    if settings.RESEND_API_KEY and settings.EMAIL_FROM_ADDRESS:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+                    json={
+                        "from": settings.EMAIL_FROM_ADDRESS,
+                        "to": [email],
+                        "subject": "Your Connfas verification code",
+                        "text": (
+                            f"Your Connfas verification code is {code}.\n\n"
+                            "It expires in 10 minutes. If you did not request this code, "
+                            "you can ignore this email."
+                        ),
+                    },
+                )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            logger.error(
+                "Email API rejected verification email with HTTP %s",
+                error.response.status_code,
             )
-        response.raise_for_status()
-    except httpx.HTTPStatusError as error:
-        logger.error(
-            "Email API rejected verification email with HTTP %s",
-            error.response.status_code,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The verification email could not be sent.",
-        ) from None
-    except httpx.RequestError:
-        logger.exception("Email API request failed while sending verification email")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The verification email could not be sent.",
-        ) from None
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The verification email could not be sent.",
+            ) from None
+        except httpx.RequestError:
+            logger.exception("Email API request failed while sending verification email")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The verification email could not be sent.",
+            ) from None
+        return
+
+    if settings.SMTP_HOST and settings.SMTP_FROM_EMAIL:
+        await run_in_threadpool(_send_otp_email_smtp, email, code)
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Email delivery is not configured.",
+    )
 
 
 @router.post("/send-otp", response_model=SendOtpResponse)
